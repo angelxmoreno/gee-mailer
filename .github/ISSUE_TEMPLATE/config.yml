@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/angelxmoreno/my-bun-project#readme
+    about: Check out the project documentation
+  - name: 💬 Discussions
+    url: https://github.com/angelxmoreno/my-bun-project/discussions
+    about: Ask questions and discuss with the community
+  - name: 🔒 Security Issues
+    url: mailto:angel@angelxmoreno.com
+    about: Report security vulnerabilities privately

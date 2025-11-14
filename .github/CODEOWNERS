@@ -1,0 +1,24 @@
+# Global owners - these users will be requested for review when someone opens a pull request
+* @angelxmoreno
+
+# Configuration files require review from maintainers
+*.json @angelxmoreno
+*.yml @angelxmoreno
+*.yaml @angelxmoreno
+*.toml @angelxmoreno
+
+# Security and workflow files require strict review
+/.github/ @angelxmoreno
+/SECURITY.md @angelxmoreno
+/CODE_OF_CONDUCT.md @angelxmoreno
+
+# Build and configuration files
+/package.json @angelxmoreno
+/tsconfig.json @angelxmoreno
+/biome.json @angelxmoreno
+/lefthook.yml @angelxmoreno
+
+# Documentation
+/README.md @angelxmoreno
+/CONTRIBUTING.md @angelxmoreno
+*.md @angelxmoreno
