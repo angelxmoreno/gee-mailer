@@ -1,6 +1,6 @@
-import { type AppConfig, AppConfigSchema } from '@app/types/AppConfig.ts';
-import { LogLevel } from '@app/types/LogLevel.ts';
-import { NodeEnv } from '@app/types/NodeEnv.ts';
+import { type AppConfig, AppConfigSchema } from '@app/types/AppConfig';
+import { LogLevel } from '@app/types/LogLevel';
+import { NodeEnv } from '@app/types/NodeEnv';
 import type { DeepPartial } from '@ts-types/deep-partial';
 import { merge } from 'ts-deepmerge';
 
@@ -20,6 +20,7 @@ export const createConfig = (overrides?: DeepPartial<AppConfig>): AppConfig => {
             level: (Bun.env.LOGGER_LEVEL as LogLevel) || LogLevel.info,
         },
         cacheUrl: Bun.env.CACHE_URL,
+        dbUrl: Bun.env.DATABASE_URL || 'mysql://user@password@localhost:3306/dbname',
     };
 
     const config = merge(appConfigEnv, overrides ?? {});

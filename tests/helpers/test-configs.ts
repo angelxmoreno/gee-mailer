@@ -1,6 +1,6 @@
 import type { AppConfig } from '@app/types/AppConfig';
-import { LogLevel } from '@app/types/LogLevel.ts';
-import { NodeEnv } from '@app/types/NodeEnv.ts';
+import { LogLevel } from '@app/types/LogLevel';
+import { NodeEnv } from '@app/types/NodeEnv';
 import { merge } from 'ts-deepmerge';
 
 export const baseConfig: AppConfig = {
@@ -10,6 +10,7 @@ export const baseConfig: AppConfig = {
         isTesting: false,
     },
     logger: { usePretty: true, level: LogLevel.info },
+    dbUrl: 'mysql://user@password@localhost:3306/dbname',
 };
 
 export const developmentConfig: AppConfig = merge(baseConfig, {

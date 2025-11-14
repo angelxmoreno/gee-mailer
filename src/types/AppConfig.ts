@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { LogLevel } from './LogLevel.ts';
-import { NodeEnv } from './NodeEnv.ts';
+import { LogLevel } from './LogLevel';
+import { NodeEnv } from './NodeEnv';
 
 export const AppConfigSchema = z.object({
     nodeEnv: z.object({
@@ -13,6 +13,7 @@ export const AppConfigSchema = z.object({
         level: z.enum(LogLevel).optional().default(LogLevel.info),
     }),
     cacheUrl: z.url().optional(),
+    dbUrl: z.url(),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

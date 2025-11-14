@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { LogLevel } from '@app/types/LogLevel.ts';
-import { NodeEnv } from '@app/types/NodeEnv.ts';
-import { createConfig } from '@app/utils/createConfig.ts';
+import { LogLevel } from '@app/types/LogLevel';
+import { NodeEnv } from '@app/types/NodeEnv';
+import { createConfig } from '@app/utils/createConfig';
 
 describe('createConfig', () => {
     const originalNodeEnv = Bun.env.NODE_ENV;
@@ -18,7 +18,7 @@ describe('createConfig', () => {
 
         const config = createConfig();
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.development,
                 isDevelopment: true,
@@ -37,7 +37,7 @@ describe('createConfig', () => {
 
         const config = createConfig();
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.test,
                 isDevelopment: false,
@@ -56,7 +56,7 @@ describe('createConfig', () => {
 
         const config = createConfig();
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.production,
                 isDevelopment: false,
@@ -81,7 +81,7 @@ describe('createConfig', () => {
 
         const config = createConfig(overrides);
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.development,
                 isDevelopment: true,

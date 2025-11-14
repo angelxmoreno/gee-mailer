@@ -33,16 +33,26 @@
         "docker:start": "docker compose -f docker/docker-compose.dev.yml up -d",
         "docker:stop": "docker compose -f docker/docker-compose.dev.yml down",
         "docker:clear": "docker compose -f docker/docker-compose.dev.yml down -v",
-        "docker:logs": "docker compose -f docker/docker-compose.dev.yml logs -f"
+        "docker:logs": "docker compose -f docker/docker-compose.dev.yml logs -f",
+        "migration:create": "bash scripts/create-migration.sh",
+        "migration:generate": "bash scripts/generate-migration.sh",
+        "migration:show": "bun --bun typeorm migration:show -d src/database/dataSource.ts",
+        "migration:run": "bun --bun typeorm migration:run -d src/database/dataSource.ts",
+        "migration:revert": "bun --bun typeorm migration:revert -d src/database/dataSource.ts"
     },
     "dependencies": {
         "@keyvhq/core": "^2.1.11",
         "@keyvhq/redis": "^2.1.11",
         "@keyvhq/sqlite": "^2.1.11",
         "@ts-types/deep-partial": "^0.0.1",
+        "inflection": "^3.0.2",
+        "pg": "^8.16.3",
         "pino": "^10.1.0",
+        "reflect-metadata": "^0.2.2",
         "ts-deepmerge": "^7.0.3",
         "tsyringe": "^4.10.0",
+        "typeorm": "^0.3.27",
+        "typeorm-pino-logger": "^0.2.0",
         "zod": "^4.1.12"
     },
     "devDependencies": {
