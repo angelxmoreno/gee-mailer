@@ -10,6 +10,7 @@ export const baseConfig: AppConfig = {
         isTesting: false,
     },
     logger: { usePretty: true, level: LogLevel.info },
+    dbUrl: '',
 };
 
 export const developmentConfig: AppConfig = merge(baseConfig, {

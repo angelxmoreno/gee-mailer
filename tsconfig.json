@@ -29,6 +29,10 @@
         "baseUrl": "./",
         "paths": {
             "@app/*": ["src/*"]
-        }
+        },
+        // decorators
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "strictPropertyInitialization": false
     }
 }

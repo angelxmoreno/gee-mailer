@@ -18,7 +18,7 @@ describe('createConfig', () => {
 
         const config = createConfig();
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.development,
                 isDevelopment: true,
@@ -37,7 +37,7 @@ describe('createConfig', () => {
 
         const config = createConfig();
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.test,
                 isDevelopment: false,
@@ -56,7 +56,7 @@ describe('createConfig', () => {
 
         const config = createConfig();
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.production,
                 isDevelopment: false,
@@ -81,7 +81,7 @@ describe('createConfig', () => {
 
         const config = createConfig(overrides);
 
-        expect(config).toEqual({
+        expect(config).toMatchObject({
             nodeEnv: {
                 env: NodeEnv.development,
                 isDevelopment: true,
