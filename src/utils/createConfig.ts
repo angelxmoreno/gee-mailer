@@ -20,7 +20,7 @@ export const createConfig = (overrides?: DeepPartial<AppConfig>): AppConfig => {
             level: (Bun.env.LOGGER_LEVEL as LogLevel) || LogLevel.info,
         },
         cacheUrl: Bun.env.CACHE_URL,
-        dbUrl: String(Bun.env.DATABASE_URL),
+        dbUrl: Bun.env.DATABASE_URL || 'mysql://user@password@localhost:3306/dbname',
     };
 
     const config = merge(appConfigEnv, overrides ?? {});

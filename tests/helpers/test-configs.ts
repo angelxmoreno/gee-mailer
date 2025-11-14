@@ -10,7 +10,7 @@ export const baseConfig: AppConfig = {
         isTesting: false,
     },
     logger: { usePretty: true, level: LogLevel.info },
-    dbUrl: '',
+    dbUrl: 'mysql://user@password@localhost:3306/dbname',
 };
 
 export const developmentConfig: AppConfig = merge(baseConfig, {
