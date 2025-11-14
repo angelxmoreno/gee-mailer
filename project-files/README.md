@@ -17,12 +17,6 @@ A local-first email intelligence and analytics system that imports your Gmail em
 
 See `START_HERE.md` for complete setup instructions.
 
-## Documentation
-
-- `START_HERE.md` - Start here!
-- `docs/IMPLEMENTATION.md` - Implementation guide
-- `docs/specs/` - Complete technical specifications
-
 ## License
 
 MIT
