@@ -1,24 +1,26 @@
 {
-    "name": "my-bun-project",
+    "name": "gee-mailer",
     "version": "1.0.0",
-    "description": "A modern TypeScript project built with Bun",
+    "description": "A local-first email intelligence and analytics system",
     "module": "src/index.ts",
     "type": "module",
     "private": true,
     "keywords": [
-        "bun",
+        "gmail",
+        "email",
+        "analytics",
         "typescript",
-        "template"
+        "bun"
     ],
     "author": "Angel Moreno <angel@angelxmoreno.com>",
     "repository": {
         "type": "git",
-        "url": "https://github.com/angelxmoreno/my-bun-project.git"
+        "url": "https://github.com/angelxmoreno/gee-mailer.git"
     },
     "bugs": {
-        "url": "https://github.com/angelxmoreno/my-bun-project/issues"
+        "url": "https://github.com/angelxmoreno/gee-mailer/issues"
     },
-    "homepage": "https://github.com/angelxmoreno/my-bun-project#readme",
+    "homepage": "https://github.com/angelxmoreno/gee-mailer#readme",
     "scripts": {
         "prepare": "bun lefthook install",
         "dev": "bun --hot src/index.ts",
@@ -27,7 +29,21 @@
         "typecheck": "tsc --noEmit",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
-        "check": "bun run typecheck && bun run lint"
+        "check": "bun run typecheck && bun run lint",
+        "docker:start": "docker compose -f docker/docker-compose.dev.yml up -d",
+        "docker:stop": "docker compose -f docker/docker-compose.dev.yml down",
+        "docker:clear": "docker compose -f docker/docker-compose.dev.yml down -v",
+        "docker:logs": "docker compose -f docker/docker-compose.dev.yml logs -f"
+    },
+    "dependencies": {
+        "@keyvhq/core": "^2.1.11",
+        "@keyvhq/redis": "^2.1.11",
+        "@keyvhq/sqlite": "^2.1.11",
+        "@ts-types/deep-partial": "^0.0.1",
+        "pino": "^10.1.0",
+        "ts-deepmerge": "^7.0.3",
+        "tsyringe": "^4.10.0",
+        "zod": "^4.1.12"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.3.5",
@@ -39,8 +55,5 @@
     },
     "peerDependencies": {
         "typescript": "^5.9.3"
-    },
-    "dependencies": {
-        "pino": "^10.1.0"
     }
 }
