@@ -1,4 +1,4 @@
-import type { PaginatedResult, PaginationOptions } from '@app/types/Pagination.ts';
+import type { PaginatedResult, PaginationOptions } from '@app/types/Pagination';
 import type { DeepPartial, FindOptionsWhere } from 'typeorm';
 import type { AppEntity } from './AppEntity';
 import type { QueryDeepPartialEntity } from './types';

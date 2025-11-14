@@ -1,6 +1,6 @@
 import type { AppConfig } from '@app/types/AppConfig';
-import { LogLevel } from '@app/types/LogLevel.ts';
-import { NodeEnv } from '@app/types/NodeEnv.ts';
+import { LogLevel } from '@app/types/LogLevel';
+import { NodeEnv } from '@app/types/NodeEnv';
 import { merge } from 'ts-deepmerge';
 
 export const baseConfig: AppConfig = {

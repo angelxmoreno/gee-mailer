@@ -1,5 +1,5 @@
-import { InflectionNamingStrategy } from '@app/modules/typeorm/naming-strategy/InflectionNamingStrategy.ts';
-import { parseDsnString } from '@app/modules/typeorm/parseDsnString.ts';
+import { InflectionNamingStrategy } from '@app/modules/typeorm/naming-strategy/InflectionNamingStrategy';
+import { parseDsnString } from '@app/modules/typeorm/parseDsnString';
 import type { AppConfig } from '@app/types/AppConfig';
 import { createBaseLogger } from '@app/utils/createBaseLogger';
 import type { Logger } from 'pino';

@@ -1,5 +1,5 @@
 import { appConfig } from '@app/config';
-import { createDataSourceOptions } from '@app/modules/typeorm/createDataSourceOptions.ts';
+import { createDataSourceOptions } from '@app/modules/typeorm/createDataSourceOptions';
 import { DataSource } from 'typeorm';
 
 /**

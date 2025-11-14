@@ -1,6 +1,6 @@
-import { type AppConfig, AppConfigSchema } from '@app/types/AppConfig.ts';
-import { LogLevel } from '@app/types/LogLevel.ts';
-import { NodeEnv } from '@app/types/NodeEnv.ts';
+import { type AppConfig, AppConfigSchema } from '@app/types/AppConfig';
+import { LogLevel } from '@app/types/LogLevel';
+import { NodeEnv } from '@app/types/NodeEnv';
 import type { DeepPartial } from '@ts-types/deep-partial';
 import { merge } from 'ts-deepmerge';
 

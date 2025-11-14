@@ -1,4 +1,4 @@
-import { AppEntity } from '@app/modules/typeorm/AppEntity.ts';
+import { AppEntity } from '@app/modules/typeorm/AppEntity';
 import { Column, Entity, Index } from 'typeorm';
 
 @Entity()

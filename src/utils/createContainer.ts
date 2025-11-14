@@ -1,4 +1,4 @@
-import { createDataSourceOptions } from '@app/modules/typeorm/createDataSourceOptions.ts';
+import { createDataSourceOptions } from '@app/modules/typeorm/createDataSourceOptions';
 import type { AppConfig } from '@app/types/AppConfig';
 import { createBaseLogger } from '@app/utils/createBaseLogger';
 import { createCacheStore } from '@app/utils/createCacheStore';
