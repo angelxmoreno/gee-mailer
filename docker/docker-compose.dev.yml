@@ -1,5 +1,4 @@
-version: '3.8'
-
+name: gee-mailer-dev
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - gee-mailer-dev-postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -24,7 +23,7 @@ services:
     ports:
       - "7700:7700"
     volumes:
-      - meilisearch_data:/meili_data
+      - gee-mailer-dev-meilisearch_data:/meili_data
     environment:
       MEILI_ENV: development
       MEILI_NO_ANALYTICS: true
@@ -45,7 +44,7 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
-      - minio_data:/data
+      - gee-mailer-dev-minio_data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -53,6 +52,6 @@ services:
       retries: 5
 
 volumes:
-  postgres_data:
-  meilisearch_data:
-  minio_data:
+  gee-mailer-dev-postgres_data:
+  gee-mailer-dev-meilisearch_data:
+  gee-mailer-dev-minio_data:

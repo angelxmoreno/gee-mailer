@@ -29,7 +29,11 @@
         "typecheck": "tsc --noEmit",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
-        "check": "bun run typecheck && bun run lint"
+        "check": "bun run typecheck && bun run lint",
+        "docker:start": "docker compose -f docker/docker-compose.dev.yml up -d",
+        "docker:stop": "docker compose -f docker/docker-compose.dev.yml down",
+        "docker:clear": "docker compose -f docker/docker-compose.dev.yml down -v",
+        "docker:logs": "docker compose -f docker/docker-compose.dev.yml logs -f"
     },
     "dependencies": {
         "@ts-types/deep-partial": "^0.0.1",
