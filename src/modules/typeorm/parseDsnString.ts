@@ -23,7 +23,11 @@ export const parseDsnString = (dsn: string): Partial<DataSourceOptions> => {
     const url = new URL(dsn);
 
     // Extract database type from protocol
-    const type = url.protocol.replace(':', '') as 'mysql' | 'postgres';
+    const rawType = url.protocol.replace(':', '');
+    const normalizedType = rawType === 'postgresql' ? 'postgres' : rawType;
+
+    const type = normalizedType as 'mysql' | 'postgres';
+
     const queryParams = url.searchParams;
     let connectionOptions: Partial<DataSourceOptions> = {
         type,

@@ -21,7 +21,7 @@ export abstract class BaseFactory<
     async create(overrides?: PartialWithRequired<TCreateDto, TRequiredKeys>): Promise<TEntity> {
         const entity: TCreateDto = this.build(overrides);
         try {
-            return this.repo.save(entity);
+            return await this.repo.save(entity);
         } catch (e) {
             const errMessage = `Unable to save entity due to: ${(e as Error).message}`;
             console.error(errMessage, {
@@ -42,7 +42,7 @@ export abstract class BaseFactory<
                 const entity = this.build(overrides);
                 entities.push(entity);
             }
-            return this.repo.saveMany(entities);
+            return await this.repo.saveMany(entities);
         } catch (e) {
             const errMessage = `Unable to save ${entities.length} entities due to: ${(e as Error).message}`;
             console.error(errMessage, {
