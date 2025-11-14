@@ -1,24 +1,26 @@
 {
-    "name": "my-bun-project",
+    "name": "gee-mailer",
     "version": "1.0.0",
-    "description": "A modern TypeScript project built with Bun",
+    "description": "A local-first email intelligence and analytics system",
     "module": "src/index.ts",
     "type": "module",
     "private": true,
     "keywords": [
-        "bun",
+        "gmail",
+        "email",
+        "analytics",
         "typescript",
-        "template"
+        "bun"
     ],
     "author": "Angel Moreno <angel@angelxmoreno.com>",
     "repository": {
         "type": "git",
-        "url": "https://github.com/angelxmoreno/my-bun-project.git"
+        "url": "https://github.com/angelxmoreno/gee-mailer.git"
     },
     "bugs": {
-        "url": "https://github.com/angelxmoreno/my-bun-project/issues"
+        "url": "https://github.com/angelxmoreno/gee-mailer/issues"
     },
-    "homepage": "https://github.com/angelxmoreno/my-bun-project#readme",
+    "homepage": "https://github.com/angelxmoreno/gee-mailer#readme",
     "scripts": {
         "prepare": "bun lefthook install",
         "dev": "bun --hot src/index.ts",
