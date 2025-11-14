@@ -19,6 +19,7 @@ export const createConfig = (overrides?: DeepPartial<AppConfig>): AppConfig => {
             usePretty: isDevelopment || isTesting,
             level: (Bun.env.LOGGER_LEVEL as LogLevel) || LogLevel.info,
         },
+        cacheUrl: Bun.env.CACHE_URL,
     };
 
     const config = merge(appConfigEnv, overrides ?? {});

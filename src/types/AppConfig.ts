@@ -12,6 +12,7 @@ export const AppConfigSchema = z.object({
         usePretty: z.boolean().optional().default(true),
         level: z.enum(LogLevel).optional().default(LogLevel.info),
     }),
+    cacheUrl: z.url().optional(),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
