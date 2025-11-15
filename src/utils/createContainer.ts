@@ -1,4 +1,7 @@
+import { UsersRepository } from '@app/database/repositories';
 import { createDataSourceOptions } from '@app/modules/typeorm/createDataSourceOptions';
+import { CurrentUserService } from '@app/services/CurrentUserService.ts';
+import { OAuthService } from '@app/services/OAuthService.ts';
 import type { AppConfig } from '@app/types/AppConfig';
 import { createBaseLogger } from '@app/utils/createBaseLogger';
 import { createCacheStore } from '@app/utils/createCacheStore';
@@ -29,6 +32,23 @@ export const createContainer = (config: AppConfig): DependencyContainer => {
 
     // create typeorm datasource
     registerFactory(DataSource, () => new DataSource(createDataSourceOptions(config)));
+
+    registerFactory(
+        OAuthService,
+        (c) =>
+            new OAuthService(
+                c.resolve(AppLogger),
+                c.resolve(UsersRepository),
+                c.resolve(CurrentUserService),
+                config.google.clientId,
+                config.google.clientSecret
+            )
+    );
+
+    registerFactory(
+        CurrentUserService,
+        (c) => new CurrentUserService(c.resolve(AppLogger), c.resolve(AppCache), c.resolve(UsersRepository))
+    );
 
     return appContainer;
 };
