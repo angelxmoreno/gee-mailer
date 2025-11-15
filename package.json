@@ -45,6 +45,7 @@
         "@keyvhq/redis": "^2.1.11",
         "@keyvhq/sqlite": "^2.1.11",
         "@ts-types/deep-partial": "^0.0.1",
+        "googleapis": "^166.0.0",
         "inflection": "^3.0.2",
         "pg": "^8.16.3",
         "pino": "^10.1.0",

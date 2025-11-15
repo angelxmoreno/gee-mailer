@@ -21,6 +21,10 @@ export const createConfig = (overrides?: DeepPartial<AppConfig>): AppConfig => {
         },
         cacheUrl: Bun.env.CACHE_URL,
         dbUrl: Bun.env.DATABASE_URL || 'mysql://user@password@localhost:3306/dbname',
+        google: {
+            clientId: String(Bun.env.GOOGLE_CLIENT_ID),
+            clientSecret: String(Bun.env.GOOGLE_CLIENT_SECRET),
+        },
     };
 
     const config = merge(appConfigEnv, overrides ?? {});
