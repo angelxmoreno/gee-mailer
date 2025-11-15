@@ -14,6 +14,10 @@ export const AppConfigSchema = z.object({
     }),
     cacheUrl: z.url().optional(),
     dbUrl: z.url(),
+    google: z.object({
+        clientId: z.string(),
+        clientSecret: z.string(),
+    }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

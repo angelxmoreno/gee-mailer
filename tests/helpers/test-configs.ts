@@ -11,6 +11,10 @@ export const baseConfig: AppConfig = {
     },
     logger: { usePretty: true, level: LogLevel.info },
     dbUrl: 'mysql://user@password@localhost:3306/dbname',
+    google: {
+        clientId: '',
+        clientSecret: '',
+    },
 };
 
 export const developmentConfig: AppConfig = merge(baseConfig, {
