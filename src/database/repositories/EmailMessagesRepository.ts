@@ -143,27 +143,36 @@ export class EmailMessagesRepository extends BaseRepositoryService<EmailMessageE
         parentPart?: MessagePartEntity
     ): Promise<void> {
         for (const partData of parts) {
-            const partPartial = {
-                userId,
-                messageId,
-                partId: partData.partId || '',
-                mimeType: partData.mimeType || '',
-                filename: partData.filename || null,
-                body: partData.body?.data || null,
-                sizeEstimate: partData.body?.size || null,
-                parentPart: parentPart || undefined,
-            };
-
-            // Upsert the part to avoid duplicates and get the saved entity
-            // biome-ignore lint/suspicious/noExplicitAny: TypeORM's `upsert` expects a `QueryDeepPartialEntity` which is not a public type.
-            await manager.upsert(MessagePartEntity, partPartial as any, ['userId', 'messageId', 'partId']);
-            const savedPart = await manager.findOneByOrFail(MessagePartEntity, {
-                userId: partPartial.userId,
-                messageId: partPartial.messageId,
-                partId: partPartial.partId,
+            // 1. Check if the part already exists
+            let partEntity = await manager.findOne(MessagePartEntity, {
+                where: {
+                    userId,
+                    messageId,
+                    partId: partData.partId || '',
+                },
             });
 
-            // Recursively save child parts
+            // 2. If it doesn't exist, create a new one
+            if (!partEntity) {
+                partEntity = new MessagePartEntity();
+            }
+
+            // 3. Populate/update the entity's data
+            partEntity.userId = userId;
+            partEntity.messageId = messageId;
+            partEntity.partId = partData.partId || '';
+            partEntity.mimeType = partData.mimeType || '';
+            partEntity.filename = partData.filename || null;
+            partEntity.body = partData.body?.data || null;
+            partEntity.sizeEstimate = partData.body?.size || null;
+            if (parentPart) {
+                partEntity.parentPart = parentPart;
+            }
+
+            // 4. Save the entity. `save` will handle inserts, updates, and tree relationships.
+            const savedPart = await manager.save(partEntity);
+
+            // 5. Recurse for child parts
             if (partData.parts && partData.parts.length > 0) {
                 await this.savePartsInTransaction(manager, userId, messageId, partData.parts, savedPart);
             }

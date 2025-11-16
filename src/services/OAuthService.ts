@@ -1,10 +1,11 @@
-import { exec } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
 import type { UserEntity } from '@app/database/entities';
 import type { UsersRepository } from '@app/database/repositories';
 import type { CurrentUserService } from '@app/services/CurrentUserService';
 import { type Auth, google } from 'googleapis';
+import open from 'open';
 import type { Logger } from 'pino';
 
 export type OAuth2Client = Auth.OAuth2Client;
@@ -23,6 +24,7 @@ export interface GoogleUserInfo {
 }
 
 export class OAuthService {
+    protected activeState?: string;
     protected oauth2Client: OAuth2Client;
     protected logger: Logger;
     protected scopes = [
@@ -104,10 +106,14 @@ export class OAuthService {
      */
     public async authorizeWithBrowser(): Promise<AuthorizationResult> {
         return new Promise((resolve, reject) => {
+            // 1. Generate and store state token
+            this.activeState = randomBytes(16).toString('hex');
+
             const authUrl = this.oauth2Client.generateAuthUrl({
                 access_type: 'offline',
                 prompt: 'consent',
                 scope: this.scopes,
+                state: this.activeState, // 2. Add state to auth URL
             });
 
             // Create local server to handle callback
@@ -123,6 +129,16 @@ export class OAuthService {
                 if (url.pathname === '/oauth2callback') {
                     const code = url.searchParams.get('code');
                     const error = url.searchParams.get('error');
+                    const receivedState = url.searchParams.get('state'); // 3. Get state from callback
+
+                    // 4. Validate state
+                    if (receivedState !== this.activeState) {
+                        res.writeHead(400, { 'Content-Type': 'text/html' });
+                        res.end(`<h1>Invalid State Parameter</h1><p>Potential CSRF attack detected.</p>`);
+                        server.close();
+                        reject(new Error('Invalid state parameter. CSRF attack suspected.'));
+                        return;
+                    }
 
                     if (error) {
                         res.writeHead(400, { 'Content-Type': 'text/html' });
@@ -158,7 +174,7 @@ export class OAuthService {
             });
 
             // Start server
-            server.listen(this.callbackPort, () => {
+            server.listen(this.callbackPort, async () => {
                 this.logger.info(`OAuth callback server started on port ${this.callbackPort}`);
                 console.log('🔐 Starting OAuth authorization...');
                 console.log('📱 Opening your browser for Google authentication...');
@@ -166,7 +182,7 @@ export class OAuthService {
                 console.log(`   ${authUrl}\n`);
 
                 // Launch browser
-                this.launchBrowser(authUrl);
+                await this.launchBrowser(authUrl);
             });
 
             // Handle server errors
@@ -186,29 +202,14 @@ export class OAuthService {
     /**
      * Launches the default browser with the authorization URL
      */
-    protected launchBrowser(url: string): void {
-        let command: string;
-
-        switch (process.platform) {
-            case 'win32':
-                command = `start "${url}"`;
-                break;
-            case 'darwin':
-                command = `open "${url}"`;
-                break;
-            default:
-                command = `xdg-open "${url}"`;
-                break;
+    protected async launchBrowser(url: string): Promise<void> {
+        try {
+            await open(url);
+            this.logger.debug('Browser launched successfully');
+        } catch (error) {
+            this.logger.error(error, 'Failed to launch browser automatically');
+            console.log('⚠️  Could not open browser automatically');
         }
-
-        exec(command, (error) => {
-            if (error) {
-                this.logger.error(error, 'Failed to launch browser automatically');
-                console.log('⚠️  Could not open browser automatically');
-            } else {
-                this.logger.debug('Browser launched successfully');
-            }
-        });
     }
 
     /**
