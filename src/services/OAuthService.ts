@@ -1,10 +1,10 @@
-import { exec } from 'node:child_process';
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
 import type { UserEntity } from '@app/database/entities';
 import type { UsersRepository } from '@app/database/repositories';
 import type { CurrentUserService } from '@app/services/CurrentUserService';
 import { type Auth, google } from 'googleapis';
+import open from 'open';
 import type { Logger } from 'pino';
 
 export type OAuth2Client = Auth.OAuth2Client;
@@ -158,7 +158,7 @@ export class OAuthService {
             });
 
             // Start server
-            server.listen(this.callbackPort, () => {
+            server.listen(this.callbackPort, async () => {
                 this.logger.info(`OAuth callback server started on port ${this.callbackPort}`);
                 console.log('🔐 Starting OAuth authorization...');
                 console.log('📱 Opening your browser for Google authentication...');
@@ -166,7 +166,7 @@ export class OAuthService {
                 console.log(`   ${authUrl}\n`);
 
                 // Launch browser
-                this.launchBrowser(authUrl);
+                await this.launchBrowser(authUrl);
             });
 
             // Handle server errors
@@ -186,29 +186,14 @@ export class OAuthService {
     /**
      * Launches the default browser with the authorization URL
      */
-    protected launchBrowser(url: string): void {
-        let command: string;
-
-        switch (process.platform) {
-            case 'win32':
-                command = `start "${url}"`;
-                break;
-            case 'darwin':
-                command = `open "${url}"`;
-                break;
-            default:
-                command = `xdg-open "${url}"`;
-                break;
+    protected async launchBrowser(url: string): Promise<void> {
+        try {
+            await open(url);
+            this.logger.debug('Browser launched successfully');
+        } catch (error) {
+            this.logger.error(error, 'Failed to launch browser automatically');
+            console.log('⚠️  Could not open browser automatically');
         }
-
-        exec(command, (error) => {
-            if (error) {
-                this.logger.error(error, 'Failed to launch browser automatically');
-                console.log('⚠️  Could not open browser automatically');
-            } else {
-                this.logger.debug('Browser launched successfully');
-            }
-        });
     }
 
     /**
