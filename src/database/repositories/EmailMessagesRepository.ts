@@ -140,21 +140,21 @@ export class EmailMessagesRepository extends BaseRepositoryService<EmailMessageE
         userId: number,
         messageId: string,
         parts: gmail_v1.Schema$MessagePart[],
-        parentId: number | null = null
+        parentPart?: MessagePartEntity
     ): Promise<void> {
         for (const partData of parts) {
             const partPartial = {
                 userId,
                 messageId,
-                parentId,
                 partId: partData.partId || '',
                 mimeType: partData.mimeType || '',
                 filename: partData.filename || null,
                 body: partData.body?.data || null,
                 sizeEstimate: partData.body?.size || null,
+                parentPart: parentPart || undefined,
             };
 
-            // Upsert the part to avoid duplicates and get the saved entity's ID
+            // Upsert the part to avoid duplicates and get the saved entity
             // biome-ignore lint/suspicious/noExplicitAny: TypeORM's `upsert` expects a `QueryDeepPartialEntity` which is not a public type.
             await manager.upsert(MessagePartEntity, partPartial as any, ['userId', 'messageId', 'partId']);
             const savedPart = await manager.findOneByOrFail(MessagePartEntity, {
@@ -162,11 +162,10 @@ export class EmailMessagesRepository extends BaseRepositoryService<EmailMessageE
                 messageId: partPartial.messageId,
                 partId: partPartial.partId,
             });
-            const savedPartId = savedPart.id;
 
             // Recursively save child parts
             if (partData.parts && partData.parts.length > 0) {
-                await this.savePartsInTransaction(manager, userId, messageId, partData.parts, savedPartId);
+                await this.savePartsInTransaction(manager, userId, messageId, partData.parts, savedPart);
             }
         }
     }

@@ -1,8 +1,9 @@
 import { AppEntity } from '@app/modules/typeorm/AppEntity';
-import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, type Relation } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, type Relation, Tree, TreeChildren, TreeParent } from 'typeorm';
 import { EmailMessageEntity } from './EmailMessageEntity';
 
 @Entity()
+@Tree('closure-table')
 @Index(['messageId', 'partId'], { unique: true })
 @Index(['userId', 'mimeType'])
 export class MessagePartEntity extends AppEntity {
@@ -25,21 +26,10 @@ export class MessagePartEntity extends AppEntity {
     @Column({ type: 'varchar', length: 50, nullable: false })
     partId: string;
 
-    @Column({ type: 'int', nullable: true })
-    @Index()
-    parentId?: number | null;
-
-    @ManyToOne(
-        () => MessagePartEntity,
-        (part) => part.childParts,
-        { onDelete: 'CASCADE' }
-    )
+    @TreeParent()
     parentPart?: Relation<MessagePartEntity> | null;
 
-    @OneToMany(
-        () => MessagePartEntity,
-        (part) => part.parentPart
-    )
+    @TreeChildren()
     childParts: Relation<MessagePartEntity[]>;
 
     @Column({ type: 'varchar', length: 200, nullable: false })

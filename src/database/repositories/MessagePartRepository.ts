@@ -76,7 +76,7 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
         userId: number,
         messageId: string,
         parts: gmail_v1.Schema$MessagePart[],
-        parentId?: number
+        parentPart?: MessagePartEntity
     ): Promise<MessagePartEntity[]> {
         const savedParts: MessagePartEntity[] = [];
 
@@ -85,7 +85,9 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
             entity.userId = userId;
             entity.messageId = messageId;
             entity.partId = part.partId || '';
-            entity.parentId = parentId || null;
+            if (parentPart) {
+                entity.parentPart = parentPart;
+            }
             entity.mimeType = part.mimeType || '';
             entity.filename = part.filename || null;
             entity.body = part.body?.data || null;
@@ -96,7 +98,7 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
 
             // Recursively save child parts
             if (part.parts && part.parts.length > 0) {
-                const childParts = await this.savePartsForMessage(userId, messageId, part.parts, savedPart.id);
+                const childParts = await this.savePartsForMessage(userId, messageId, part.parts, savedPart);
                 savedParts.push(...childParts);
             }
         }
