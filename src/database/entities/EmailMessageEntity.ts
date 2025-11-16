@@ -1,5 +1,7 @@
 import { AppEntity } from '@app/modules/typeorm/AppEntity.ts';
-import { Column, Entity, Index } from 'typeorm';
+import { Column, Entity, Index, OneToMany, type Relation } from 'typeorm';
+import { HeaderEntity } from './HeaderEntity';
+import { MessagePartEntity } from './MessagePartEntity';
 
 @Entity()
 @Index(['userId', 'messageId'], { unique: true })
@@ -48,4 +50,19 @@ export class EmailMessageEntity extends AppEntity {
     // Optional RAW base64-URL body
     @Column({ type: 'text', nullable: true })
     raw?: string | null;
+
+    // Relationships
+    @OneToMany(
+        () => HeaderEntity,
+        (header) => header.message,
+        { cascade: true }
+    )
+    headers: Relation<HeaderEntity[]>;
+
+    @OneToMany(
+        () => MessagePartEntity,
+        (part) => part.message,
+        { cascade: true }
+    )
+    messageParts: Relation<MessagePartEntity[]>;
 }
