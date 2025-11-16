@@ -42,7 +42,22 @@ export class GmailService {
         // Handle tokenExpiryDate as either Date object or string
         let expiryTime: number | undefined;
         if (currentUser.tokenExpiryDate) {
-            expiryTime = currentUser.tokenExpiryDate.getTime();
+            let dateValue: Date;
+            if (typeof currentUser.tokenExpiryDate === 'string') {
+                dateValue = new Date(currentUser.tokenExpiryDate);
+            } else {
+                dateValue = currentUser.tokenExpiryDate;
+            }
+
+            // Ensure the date is valid before getting time
+            if (!isNaN(dateValue.getTime())) {
+                expiryTime = dateValue.getTime();
+            } else {
+                this.logger.warn(
+                    { tokenExpiryDate: currentUser.tokenExpiryDate },
+                    'Invalid tokenExpiryDate encountered, treating as undefined.'
+                );
+            }
         }
 
         oauth2Client.setCredentials({
@@ -84,7 +99,7 @@ export class GmailService {
             'Message list fetched successfully'
         );
         this.cache.set(cacheKey, results.data, 60 * 5 * 1000);
-        return results;
+        return { data: results.data };
     }
 
     /**
@@ -112,7 +127,7 @@ export class GmailService {
         // Cache for 30 minutes (messages don't change often)
         this.cache.set(cacheKey, result.data, 60 * 30 * 1000);
 
-        return result;
+        return { data: result.data };
     }
 
     /**
@@ -138,7 +153,7 @@ export class GmailService {
         // Cache for 1 hour (profile data changes rarely)
         this.cache.set(cacheKey, result.data, 60 * 60 * 1000);
 
-        return result;
+        return { data: result.data };
     }
 
     /**
