@@ -18,7 +18,7 @@ const main = async () => {
         if (!currentUser) {
             logger.error('❌ No user is currently authenticated.');
             logger.debug('💡 Please run `bun src/cli/auth.ts` to authenticate first.');
-            return;
+            process.exit(1);
         }
 
         logger.debug(`🔄 Starting sync for ${currentUser.name} (${currentUser.email})`);

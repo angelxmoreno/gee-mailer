@@ -147,9 +147,26 @@ export class GmailService {
     async clearMessageListCache(userId?: number): Promise<void> {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
 
-        // Get all cache keys that match the pattern for this user's message lists
-        // Note: This is a simple implementation - more sophisticated cache backends
-        // might support pattern-based deletion
+        // TODO: This implementation is currently flawed.
+        // The `fetchMessageList` function caches pages using opaque `pageToken` strings
+        // provided by the Gmail API. This `clearMessageListCache` only attempts to delete
+        // keys for 'first-page' and synthetic 'page-N' patterns, which do not match
+        // the actual cached keys for subsequent pages.
+        // As a result, only the first page of the message list cache is effectively cleared.
+        //
+        // To fix this, a more robust cache invalidation strategy is needed:
+        // 1. When caching message lists, record all generated cache keys (including those
+        //    with `pageToken`s) in a separate index (e.g., a Set stored in cache).
+        // 2. In `clearMessageListCache`, retrieve this index, iterate through all recorded
+        //    keys, and delete each one. Finally, delete the index itself.
+        // OR
+        // 3. Use a cache backend that supports pattern-based deletion or "tagged" caching.
+        //    For example, a library like `tagged-keyv-wrapper` could be used to tag all
+        //    message list cache entries for a user, allowing for a single bulk deletion
+        //    operation by tag.
+        //
+        // The current approach will only clear the 'first-page' and a few hardcoded
+        // 'page-N' keys, leaving most cached message list pages stale.
         const cachePatterns = [
             cacheKeyGenerator(['fetchMessageList', targetUserId, 'first-page']),
             // Clear common pagination patterns
