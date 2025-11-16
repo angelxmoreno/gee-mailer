@@ -26,7 +26,7 @@ export class MessagePartEntity extends AppEntity {
     @Column({ type: 'varchar', length: 50, nullable: false })
     partId: string;
 
-    @TreeParent()
+    @TreeParent({ onDelete: 'CASCADE' })
     parentPart?: Relation<MessagePartEntity> | null;
 
     @TreeChildren()
