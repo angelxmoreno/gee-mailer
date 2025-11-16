@@ -5,14 +5,9 @@ import { OAuthService } from '@app/services/OAuthService.ts';
 import type { AppConfig } from '@app/types/AppConfig';
 import { createBaseLogger } from '@app/utils/createBaseLogger';
 import { createCacheStore } from '@app/utils/createCacheStore';
-import type Keyv from '@keyvhq/core';
-import type { Logger } from 'pino';
+import { AppCache, AppLogger } from '@app/utils/tokens';
 import { container, type DependencyContainer, type InjectionToken, instanceCachingFactory } from 'tsyringe';
 import { DataSource } from 'typeorm';
-
-// Simple string-based injection tokens for consistency
-export const AppLogger: InjectionToken<Logger> = 'Logger';
-export const AppCache: InjectionToken<Keyv> = 'Cache';
 
 export const createContainer = (config: AppConfig): DependencyContainer => {
     const appContainer = container.createChildContainer();
@@ -33,6 +28,9 @@ export const createContainer = (config: AppConfig): DependencyContainer => {
     // create typeorm datasource
     registerFactory(DataSource, () => new DataSource(createDataSourceOptions(config)));
 
+    // Note: Services with @singleton() decorator are auto-registered by TSyringe
+    // Only manually register services that need special configuration
+
     registerFactory(
         OAuthService,
         (c) =>
@@ -43,11 +41,6 @@ export const createContainer = (config: AppConfig): DependencyContainer => {
                 config.google.clientId,
                 config.google.clientSecret
             )
-    );
-
-    registerFactory(
-        CurrentUserService,
-        (c) => new CurrentUserService(c.resolve(AppLogger), c.resolve(AppCache), c.resolve(UsersRepository))
     );
 
     return appContainer;
