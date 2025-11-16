@@ -1,28 +1,17 @@
-import { EmailMessageEntity } from '@app/database/entities';
+import { EmailMessageEntity, HeaderEntity, MessagePartEntity } from '@app/database/entities';
 import { BaseRepositoryService } from '@app/modules/typeorm/BaseRepositoryService';
 import type { MessageListResponse } from '@app/services/GmailService';
 import { filterNullish } from '@app/utils/filterNullish';
 import type { gmail_v1 } from 'googleapis';
 import { inject, singleton } from 'tsyringe';
-import { DataSource, type ObjectLiteral } from 'typeorm';
-import { HeaderRepository } from './HeaderRepository';
-import { MessagePartRepository } from './MessagePartRepository';
+import { DataSource, type EntityManager, type ObjectLiteral } from 'typeorm';
 
 type MessageData = gmail_v1.Schema$Message;
 
 @singleton()
 export class EmailMessagesRepository extends BaseRepositoryService<EmailMessageEntity> {
-    protected headerRepository: HeaderRepository;
-    protected messagePartRepository: MessagePartRepository;
-
-    constructor(
-        @inject(DataSource) dataSource: DataSource,
-        @inject(HeaderRepository) headerRepository: HeaderRepository,
-        @inject(MessagePartRepository) messagePartRepository: MessagePartRepository
-    ) {
+    constructor(@inject(DataSource) dataSource: DataSource) {
         super(dataSource, EmailMessageEntity);
-        this.headerRepository = headerRepository;
-        this.messagePartRepository = messagePartRepository;
     }
 
     /**
@@ -105,26 +94,81 @@ export class EmailMessagesRepository extends BaseRepositoryService<EmailMessageE
             throw new Error('Message must have an ID');
         }
 
-        // Save the main message
-        const savedMessage = await this.saveMessage(userId, messageData);
+        return this.dataSource.transaction(async (manager) => {
+            // Upsert the main message entity
+            const partial = this.createPartialMessage(userId, messageData);
+            // biome-ignore lint/suspicious/noExplicitAny: TypeORM's `upsert` expects a `QueryDeepPartialEntity` which is not a public type.
+            await manager.upsert(EmailMessageEntity, partial as any, ['userId', 'messageId']);
+            const savedMessage = await manager.findOneByOrFail(EmailMessageEntity, {
+                userId: partial.userId,
+                messageId: partial.messageId,
+            });
 
-        // Extract and save headers from the payload
-        if (messageData.payload) {
-            const headers = this.extractHeaders(messageData.payload);
-            if (headers.length > 0) {
-                await this.headerRepository.saveHeadersForMessage(userId, messageData.id, headers);
+            if (messageData.payload) {
+                // Upsert headers for the top-level payload
+                const headers = this.extractHeaders(messageData.payload);
+                if (headers.length > 0) {
+                    const headerPartials = headers.map((h) => ({
+                        userId,
+                        messageId: savedMessage.messageId,
+                        name: h.name,
+                        value: h.value,
+                    }));
+                    await manager.upsert(HeaderEntity, headerPartials, ['userId', 'messageId', 'name']);
+                }
+
+                // Recursively save parts
+                if (messageData.payload.parts && messageData.payload.parts.length > 0) {
+                    await this.savePartsInTransaction(
+                        manager,
+                        userId,
+                        savedMessage.messageId,
+                        messageData.payload.parts
+                    );
+                } else if (messageData.payload.body || messageData.payload.mimeType) {
+                    // Single part message - save the payload itself as a part
+                    await this.savePartsInTransaction(manager, userId, savedMessage.messageId, [messageData.payload]);
+                }
             }
 
-            // Extract and save message parts (if they exist)
-            if (messageData.payload.parts && messageData.payload.parts.length > 0) {
-                await this.messagePartRepository.savePartsForMessage(userId, messageData.id, messageData.payload.parts);
-            } else if (messageData.payload.body || messageData.payload.mimeType) {
-                // Single part message - save the payload itself as a part
-                await this.messagePartRepository.savePartsForMessage(userId, messageData.id, [messageData.payload]);
+            return savedMessage;
+        });
+    }
+
+    protected async savePartsInTransaction(
+        manager: EntityManager,
+        userId: number,
+        messageId: string,
+        parts: gmail_v1.Schema$MessagePart[],
+        parentId: number | null = null
+    ): Promise<void> {
+        for (const partData of parts) {
+            const partPartial = {
+                userId,
+                messageId,
+                parentId,
+                partId: partData.partId || '',
+                mimeType: partData.mimeType || '',
+                filename: partData.filename || null,
+                body: partData.body?.data || null,
+                sizeEstimate: partData.body?.size || null,
+            };
+
+            // Upsert the part to avoid duplicates and get the saved entity's ID
+            // biome-ignore lint/suspicious/noExplicitAny: TypeORM's `upsert` expects a `QueryDeepPartialEntity` which is not a public type.
+            await manager.upsert(MessagePartEntity, partPartial as any, ['userId', 'messageId', 'partId']);
+            const savedPart = await manager.findOneByOrFail(MessagePartEntity, {
+                userId: partPartial.userId,
+                messageId: partPartial.messageId,
+                partId: partPartial.partId,
+            });
+            const savedPartId = savedPart.id;
+
+            // Recursively save child parts
+            if (partData.parts && partData.parts.length > 0) {
+                await this.savePartsInTransaction(manager, userId, messageId, partData.parts, savedPartId);
             }
         }
-
-        return savedMessage;
     }
 
     /**
