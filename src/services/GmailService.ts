@@ -43,14 +43,13 @@ export class GmailService {
         let expiryTime: number | undefined;
         if (currentUser.tokenExpiryDate) {
             let dateValue: Date;
-            if (typeof currentUser.tokenExpiryDate === 'string') {
-                dateValue = new Date(currentUser.tokenExpiryDate);
-            } else {
-                dateValue = currentUser.tokenExpiryDate;
-            }
 
+            dateValue =
+                typeof currentUser.tokenExpiryDate === 'string'
+                    ? new Date(currentUser.tokenExpiryDate)
+                    : currentUser.tokenExpiryDate;
             // Ensure the date is valid before getting time
-            if (!isNaN(dateValue.getTime())) {
+            if (!Number.isNaN(dateValue.getTime())) {
                 expiryTime = dateValue.getTime();
             } else {
                 this.logger.warn(
