@@ -20,6 +20,6 @@ export class UserEntity extends AppEntity {
     @Column({ type: 'text', nullable: true })
     refreshToken?: string | null;
 
-    @Column({ type: 'date', nullable: true })
+    @Column({ type: 'timestamp', nullable: true })
     tokenExpiryDate: Date | null;
 }
