@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
 import type { UserEntity } from '@app/database/entities';
@@ -23,6 +24,7 @@ export interface GoogleUserInfo {
 }
 
 export class OAuthService {
+    protected activeState?: string;
     protected oauth2Client: OAuth2Client;
     protected logger: Logger;
     protected scopes = [
@@ -104,10 +106,14 @@ export class OAuthService {
      */
     public async authorizeWithBrowser(): Promise<AuthorizationResult> {
         return new Promise((resolve, reject) => {
+            // 1. Generate and store state token
+            this.activeState = randomBytes(16).toString('hex');
+
             const authUrl = this.oauth2Client.generateAuthUrl({
                 access_type: 'offline',
                 prompt: 'consent',
                 scope: this.scopes,
+                state: this.activeState, // 2. Add state to auth URL
             });
 
             // Create local server to handle callback
@@ -123,6 +129,16 @@ export class OAuthService {
                 if (url.pathname === '/oauth2callback') {
                     const code = url.searchParams.get('code');
                     const error = url.searchParams.get('error');
+                    const receivedState = url.searchParams.get('state'); // 3. Get state from callback
+
+                    // 4. Validate state
+                    if (receivedState !== this.activeState) {
+                        res.writeHead(400, { 'Content-Type': 'text/html' });
+                        res.end(`<h1>Invalid State Parameter</h1><p>Potential CSRF attack detected.</p>`);
+                        server.close();
+                        reject(new Error('Invalid state parameter. CSRF attack suspected.'));
+                        return;
+                    }
 
                     if (error) {
                         res.writeHead(400, { 'Content-Type': 'text/html' });
