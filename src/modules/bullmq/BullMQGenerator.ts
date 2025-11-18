@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { QueueConfig } from '@app/modules/bullmq/types.ts';
 import { Eta } from 'eta';
 import type { Logger } from 'pino';
@@ -39,7 +40,7 @@ export class BullMQCodeGen {
 
     protected getDefaultTemplatesDir(): string {
         // Default to built-in templates directory
-        return new URL('../templates', import.meta.url).pathname;
+        return fileURLToPath(new URL('../templates', import.meta.url));
     }
 
     async generate(): Promise<void> {
