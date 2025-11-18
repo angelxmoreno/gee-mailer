@@ -31,7 +31,7 @@
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
         "check": "bun run typecheck && bun run lint",
-        "codegen:bullmq": "bun src/cli/bullmq-codeGen.ts",
+        "codegen:bullmq": "bun src/cli/bullmq-codegen.ts",
         "user:auth": "bun src/cli/auth.ts",
         "user:sync": "bun src/cli/sync.ts",
         "workers:start": "bun src/workers.ts",
