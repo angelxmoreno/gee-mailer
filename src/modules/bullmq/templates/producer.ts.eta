@@ -1,0 +1,29 @@
+import type { z } from 'zod';
+import queueConfig from '../queueDefinitions';
+import {
+<% Object.keys(it.config.queues).forEach((queueName, index) => { %>
+    <%= queueName %>Queue<% if (index < Object.keys(it.config.queues).length - 1) { %>,<% } %>
+<% }); %>
+} from './queues';
+
+<% Object.entries(it.config.queues).forEach(([queueName, queueDef]) => { %>
+<% Object.entries(queueDef.workers).forEach(([workerName, workerDef]) => { %>
+<% const functionName = 'enqueue' + workerName.charAt(0).toUpperCase() + workerName.slice(1); %>
+<% if (workerDef.schema) { %>
+export const <%= functionName %> = async (
+    data: z.infer<typeof queueConfig.queues.<%= queueName %>.workers.<%= workerName %>.schema>
+) => {
+    // Validate with schema
+    const validatedData = queueConfig.queues.<%= queueName %>.workers.<%= workerName %>.schema.parse(data);
+
+    // Add to queue with validated data
+    return await <%= queueName %>Queue.add('<%= workerName %>', validatedData);
+};
+<% } else { %>
+export const <%= functionName %> = async () => {
+    return await <%= queueName %>Queue.add('<%= workerName %>', undefined);
+};
+<% } %>
+
+<% }); %>
+<% }); %>

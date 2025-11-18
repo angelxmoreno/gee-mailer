@@ -1,0 +1,16 @@
+import { Worker } from 'bullmq';
+import queueConfig from '../queueDefinitions';
+
+<% Object.entries(it.config.queues).forEach(([queueName, queueDef]) => { %>
+<% Object.entries(queueDef.workers).forEach(([workerName, workerDef]) => { %>
+export const <%= workerName %>Worker = new Worker(
+    '<%= queueName %>',
+    queueConfig.queues.<%= queueName %>.workers.<%= workerName %>.processor,
+    {
+        ...queueConfig.queues.<%= queueName %>.workers.<%= workerName %>.options,
+        connection: queueConfig.connection,
+    }
+);
+
+<% }); %>
+<% }); %>
