@@ -115,15 +115,15 @@ export class BullMQCodeGen {
     }
 
     protected async generateEcosystemConfig(): Promise<void> {
-        const content = await this.eta.renderAsync('ecosystem.config.js.eta', {
+        const content = await this.eta.renderAsync('ecosystem.config.cjs.eta', {
             config: this.config,
             queues: this.config.queues,
         });
 
         // Write to project root, not the outDir
-        const rootPath = path.resolve('./ecosystem.config.js');
+        const rootPath = path.resolve('./ecosystem.config.cjs');
         await writeFile(rootPath, content, 'utf-8');
-        this.logger.debug('Generated ecosystem.config.js');
+        this.logger.debug('Generated ecosystem.config.cjs');
     }
 
     protected async writeFile(fileName: string, content: string): Promise<void> {

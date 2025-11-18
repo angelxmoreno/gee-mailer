@@ -3,7 +3,7 @@ module.exports = {
         {
             name: 'gee-mailer-api',
             script: 'src/index.ts',
-            interpreter: 'bun',
+            interpreter: '/Users/amoreno/.bun/bin/bun',
             interpreter_args: '--hot',
             instances: process.env.API_INSTANCES || 'max',
             exec_mode: 'cluster',
@@ -11,6 +11,11 @@ module.exports = {
                 NODE_ENV: 'development',
                 PORT: 3000,
                 WORKER_ENABLED: false, // Disable workers in API process
+            },
+            env_development: {
+                NODE_ENV: 'development',
+                PORT: 3000,
+                WORKER_ENABLED: false,
             },
             env_production: {
                 NODE_ENV: 'production',
@@ -28,7 +33,7 @@ module.exports = {
         {
             name: 'gee-mailer-workers',
             script: 'src/workers.ts',
-            interpreter: 'bun',
+            interpreter: '/Users/amoreno/.bun/bin/bun',
             instances: process.env.WORKER_INSTANCES || 2,
             exec_mode: 'cluster',
             env: {
@@ -36,6 +41,10 @@ module.exports = {
                 WORKER_ENABLED: true,
                 // afterSignUpEmail worker (queue: emailSend)
                 // dbCleanUp worker (queue: dbOperations)
+            },
+            env_development: {
+                NODE_ENV: 'development',
+                WORKER_ENABLED: true,
             },
             env_production: {
                 NODE_ENV: 'production',
