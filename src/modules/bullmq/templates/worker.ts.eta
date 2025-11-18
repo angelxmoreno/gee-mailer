@@ -14,3 +14,12 @@ export const <%= workerName %>Worker = new Worker(
 
 <% }); %>
 <% }); %>
+
+// Export all workers as array for WorkerManager
+export const allWorkers = [
+<% Object.entries(it.config.queues).forEach(([queueName, queueDef]) => { %>
+<% Object.entries(queueDef.workers).forEach(([workerName, workerDef]) => { %>
+    <%= workerName %>Worker,
+<% }); %>
+<% }); %>
+];

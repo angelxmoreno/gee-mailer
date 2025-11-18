@@ -55,7 +55,12 @@ export class BullMQCodeGen {
             await mkdir(this.outDir, { recursive: true });
 
             // Generate all files
-            await Promise.all([this.generateQueues(), this.generateWorkers(), this.generateProducers()]);
+            await Promise.all([
+                this.generateQueues(),
+                this.generateWorkers(),
+                this.generateProducers(),
+                this.generateEcosystemConfig(),
+            ]);
 
             this.logger.info('BullMQ code generation completed successfully');
         } catch (error) {
@@ -107,6 +112,18 @@ export class BullMQCodeGen {
 
         await this.writeFile('producers.ts', content);
         this.logger.debug('Generated producers.ts');
+    }
+
+    protected async generateEcosystemConfig(): Promise<void> {
+        const content = await this.eta.renderAsync('ecosystem.config.js.eta', {
+            config: this.config,
+            queues: this.config.queues,
+        });
+
+        // Write to project root, not the outDir
+        const rootPath = path.resolve('./ecosystem.config.js');
+        await writeFile(rootPath, content, 'utf-8');
+        this.logger.debug('Generated ecosystem.config.js');
     }
 
     protected async writeFile(fileName: string, content: string): Promise<void> {

@@ -25,6 +25,12 @@ export const createConfig = (overrides?: DeepPartial<AppConfig>): AppConfig => {
             clientId: String(Bun.env.GOOGLE_CLIENT_ID),
             clientSecret: String(Bun.env.GOOGLE_CLIENT_SECRET),
         },
+        workers: {
+            enabled: Bun.env.WORKER_ENABLED !== 'false',
+            gracefulShutdownTimeout: Number(Bun.env.WORKER_SHUTDOWN_TIMEOUT) || 30000,
+            healthCheckInterval: Number(Bun.env.WORKER_HEALTH_CHECK_INTERVAL) || 30000,
+            autoRestart: Bun.env.WORKER_AUTO_RESTART !== 'false',
+        },
     };
 
     const config = merge(appConfigEnv, overrides ?? {});

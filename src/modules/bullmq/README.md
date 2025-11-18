@@ -280,6 +280,196 @@ src/modules/bullmq/
 5. **Scalability**: Easy to add new queues and workers
 6. **Consistency**: Standardized patterns across all queue operations
 
+## Worker Deployment
+
+### Development
+
+**Start workers in development:**
+```bash
+# Single worker process with hot reloading
+bun run workers:dev
+
+# Or start workers separately
+bun run workers:start
+```
+
+**Start API and workers together:**
+```bash
+# Terminal 1: Start API
+bun run dev
+
+# Terminal 2: Start workers
+bun run workers:dev
+```
+
+### Production Deployment
+
+#### Option 1: PM2 Process Manager (Recommended)
+
+**Install PM2:**
+```bash
+npm install -g pm2
+```
+
+**Production deployment:**
+```bash
+# Start all processes (API + Workers)
+bun run pm2:start:prod
+
+# View status
+bun run pm2:status
+
+# View logs
+bun run pm2:logs
+
+# Stop all processes
+bun run pm2:stop
+```
+
+**Development with PM2:**
+```bash
+bun run pm2:start:dev
+```
+
+#### Option 2: Docker Deployment
+
+Add to your `docker-compose.yml`:
+```yaml
+services:
+  api:
+    build: .
+    command: bun src/index.ts
+    environment:
+      - WORKER_ENABLED=false
+    ports:
+      - "3000:3000"
+
+  workers:
+    build: .
+    command: bun src/workers.ts
+    environment:
+      - WORKER_ENABLED=true
+    depends_on:
+      - redis
+```
+
+#### Option 3: Separate Node Processes
+
+```bash
+# Start API (without workers)
+WORKER_ENABLED=false bun src/index.ts
+
+# Start workers (separate process)
+WORKER_ENABLED=true bun src/workers.ts
+```
+
+### Configuration
+
+**Worker Configuration (AppConfig):**
+```typescript
+workers: {
+  enabled: true,                    // Enable/disable workers
+  gracefulShutdownTimeout: 30000,   // Shutdown timeout (ms)
+  healthCheckInterval: 30000,       // Health check interval (ms)
+  autoRestart: true                 // Auto-restart on failure
+}
+```
+
+**Environment Variables:**
+```bash
+# PM2 scaling
+API_INSTANCES=max          # Number of API instances
+WORKER_INSTANCES=2         # Number of worker instances
+
+# Worker control
+WORKER_ENABLED=true        # Enable workers in this process
+```
+
+### Production Considerations
+
+#### Graceful Shutdown
+- Workers automatically handle `SIGTERM` and `SIGINT` signals
+- Configurable shutdown timeout prevents hanging processes
+- In-flight jobs complete before shutdown
+
+#### Error Handling
+- Automatic worker error logging
+- Stalled job detection and logging
+- Unhandled exception/rejection handling
+- Process restart on fatal errors
+
+#### Health Monitoring
+- Periodic health checks with worker status
+- Job processing metrics (processed/failed counts)
+- Worker state monitoring (running/closed)
+
+#### Scaling Strategies
+
+**Horizontal Scaling:**
+```bash
+# Scale API processes
+API_INSTANCES=4 pm2 start ecosystem.config.js --env production
+
+# Scale worker processes
+WORKER_INSTANCES=6 pm2 start ecosystem.config.js --env production
+```
+
+**Queue-Specific Scaling:**
+- Configure concurrency per worker in queue definitions
+- Use worker options for rate limiting
+- Scale based on queue depth and processing time
+
+#### Redis Configuration
+
+**Production Redis Settings:**
+```bash
+# Enable persistence
+redis-server --appendonly yes --appendfsync everysec
+
+# Disable key eviction for BullMQ
+redis-cli CONFIG SET maxmemory-policy noeviction
+```
+
+### Monitoring & Debugging
+
+**PM2 Commands:**
+```bash
+# Real-time monitoring
+pm2 monit
+
+# Process status
+pm2 list
+
+# Restart specific process
+pm2 restart gee-mailer-workers
+
+# View worker logs
+pm2 logs gee-mailer-workers
+
+# Worker metrics
+pm2 show gee-mailer-workers
+```
+
+**Health Check Endpoint (Optional):**
+```typescript
+// Add to your API
+app.get('/health/workers', async (req, res) => {
+  // Check worker health via Redis
+  const workerStatus = await getWorkerHealth();
+  res.json(workerStatus);
+});
+```
+
+### Security
+
+**Production Checklist:**
+- [ ] Run workers as non-root user
+- [ ] Configure Redis authentication
+- [ ] Use environment variables for secrets
+- [ ] Enable TLS for Redis connections
+- [ ] Set appropriate file permissions
+- [ ] Configure firewall rules
+
 ## Best Practices
 
 1. **Schema Design**: Use descriptive Zod schemas for complex job data
@@ -287,6 +477,9 @@ src/modules/bullmq/
 3. **Queue Names**: Use clear, descriptive queue names
 4. **Error Handling**: Implement proper error handling in processors
 5. **Monitoring**: Use BullMQ's built-in monitoring capabilities
+6. **Process Separation**: Run API and workers in separate processes for production
+7. **Graceful Shutdown**: Always handle shutdown signals properly
+8. **Resource Monitoring**: Monitor memory and CPU usage of worker processes
 
 ## Migration
 
@@ -296,5 +489,6 @@ When updating queue configurations:
 2. Run code generation
 3. Update imports if queue/worker names changed
 4. Test generated code
+5. Deploy workers before API to ensure job processing continues
 
 The system ensures backward compatibility when adding new queues or workers without breaking existing functionality.
