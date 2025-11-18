@@ -250,7 +250,7 @@ Complete examples are available in `src/modules/bullmq/sample/` showing the expe
 ## Architecture
 
 ### File Structure
-```
+```text
 src/modules/bullmq/
 ├── README.md              # This documentation
 ├── types.ts               # Type definitions
