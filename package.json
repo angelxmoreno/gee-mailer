@@ -23,6 +23,7 @@
     "homepage": "https://github.com/angelxmoreno/gee-mailer#readme",
     "scripts": {
         "prepare": "bun lefthook install",
+        "postinstall": "bun run codegen:bullmq",
         "dev": "bun --hot src/index.ts",
         "build": "tsc",
         "test": "bun test",
