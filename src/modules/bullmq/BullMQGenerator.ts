@@ -76,13 +76,49 @@ export class BullMQCodeGen {
         this.logger.debug({ configPath: this.configPath }, 'Loading config from file');
 
         try {
+            // Resolve path consistently before importing
+            const resolvedPath = path.resolve(this.configPath);
+
             // Dynamic import the config file
-            const configModule = await import(this.configPath);
+            const configModule = await import(resolvedPath);
             this.config = configModule.default || configModule;
+
+            // Validate the loaded config has required QueueConfig shape
+            this.validateConfig();
         } catch (error) {
             this.logger.error({ error, configPath: this.configPath }, 'Failed to load config file');
             throw new Error(`Failed to load config from ${this.configPath}: ${error}`);
         }
+    }
+
+    protected validateConfig(): void {
+        if (!this.config || typeof this.config !== 'object') {
+            throw new Error('Config must be an object');
+        }
+
+        const config = this.config as unknown as Record<string, unknown>;
+
+        if (!config.queues || typeof config.queues !== 'object') {
+            throw new Error('Config must have a "queues" property that is an object');
+        }
+
+        const queueNames = Object.keys(config.queues);
+        if (queueNames.length === 0) {
+            throw new Error('Config "queues" object must contain at least one queue definition');
+        }
+
+        if (!config.connection || typeof config.connection !== 'object') {
+            throw new Error('Config must have a "connection" property that is an object');
+        }
+
+        this.logger.debug(
+            {
+                queueCount: queueNames.length,
+                queueNames,
+                hasConnection: !!config.connection,
+            },
+            'Config validation passed'
+        );
     }
 
     protected async generateQueues(): Promise<void> {
