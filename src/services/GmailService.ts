@@ -1,10 +1,10 @@
 import { UsersRepository } from '@app/database/repositories';
 import { CurrentUserService } from '@app/services/CurrentUserService';
 import { cacheKeyGenerator } from '@app/utils/cacheKeyGenerator.ts';
-import { AppCache, AppLogger } from '@app/utils/tokens';
-import type Keyv from '@keyvhq/core';
+import { AppLogger } from '@app/utils/tokens';
 import { type gmail_v1, google } from 'googleapis';
 import type { Logger } from 'pino';
+import { TaggedKeyv } from 'tagged-keyv-wrapper';
 import { inject, singleton } from 'tsyringe';
 
 type Gmail = gmail_v1.Gmail;
@@ -15,13 +15,13 @@ export type ProfileResponse = gmail_v1.Schema$Profile;
 @singleton()
 export class GmailService {
     protected logger: Logger;
-    protected cache: Keyv;
+    protected cache: TaggedKeyv;
     protected currentUserService: CurrentUserService;
     protected usersRepository: UsersRepository;
 
     constructor(
         @inject(AppLogger) logger: Logger,
-        @inject(AppCache) cache: Keyv,
+        @inject(TaggedKeyv) cache: TaggedKeyv,
         @inject(CurrentUserService) currentUserService: CurrentUserService,
         @inject(UsersRepository) usersRepository: UsersRepository
     ) {
@@ -97,7 +97,8 @@ export class GmailService {
             },
             'Message list fetched successfully'
         );
-        this.cache.set(cacheKey, results.data, 60 * 5 * 1000);
+        // Use TaggedKeyv to tag cache entries for easier bulk deletion
+        await this.cache.set(cacheKey, results.data, 60 * 5 * 1000, [`user:${currentUser.id}`, 'messageList']);
         return { data: results.data };
     }
 
@@ -124,7 +125,7 @@ export class GmailService {
         });
 
         // Cache for 30 minutes (messages don't change often)
-        this.cache.set(cacheKey, result.data, 60 * 30 * 1000);
+        await this.cache.set(cacheKey, result.data, 60 * 30 * 1000, [`user:${currentUser.id}`, 'message']);
 
         return { data: result.data };
     }
@@ -150,48 +151,19 @@ export class GmailService {
         });
 
         // Cache for 1 hour (profile data changes rarely)
-        this.cache.set(cacheKey, result.data, 60 * 60 * 1000);
+        await this.cache.set(cacheKey, result.data, 60 * 60 * 1000, [`user:${currentUser.id}`, 'profile']);
 
         return { data: result.data };
     }
 
     /**
-     * Clear all cached message lists for a specific user
+     * Clear all cached message lists for a specific user using TaggedKeyv
      */
     async clearMessageListCache(userId?: number): Promise<void> {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
 
-        // TODO: This implementation is currently flawed.
-        // The `fetchMessageList` function caches pages using opaque `pageToken` strings
-        // provided by the Gmail API. This `clearMessageListCache` only attempts to delete
-        // keys for 'first-page' and synthetic 'page-N' patterns, which do not match
-        // the actual cached keys for subsequent pages.
-        // As a result, only the first page of the message list cache is effectively cleared.
-        //
-        // To fix this, a more robust cache invalidation strategy is needed:
-        // 1. When caching message lists, record all generated cache keys (including those
-        //    with `pageToken`s) in a separate index (e.g., a Set stored in cache).
-        // 2. In `clearMessageListCache`, retrieve this index, iterate through all recorded
-        //    keys, and delete each one. Finally, delete the index itself.
-        // OR
-        // 3. Use a cache backend that supports pattern-based deletion or "tagged" caching.
-        //    For example, a library like `tagged-keyv-wrapper` could be used to tag all
-        //    message list cache entries for a user, allowing for a single bulk deletion
-        //    operation by tag.
-        //
-        // The current approach will only clear the 'first-page' and a few hardcoded
-        // 'page-N' keys, leaving most cached message list pages stale.
-        const cachePatterns = [
-            cacheKeyGenerator(['fetchMessageList', targetUserId, 'first-page']),
-            // Clear common pagination patterns
-            ...Array.from({ length: 10 }, (_, i) =>
-                cacheKeyGenerator(['fetchMessageList', targetUserId, `page-${i + 1}`])
-            ),
-        ];
-
-        for (const key of cachePatterns) {
-            await this.cache.delete(key);
-        }
+        // Use TaggedKeyv to clear all message list entries for this user
+        await this.cache.invalidateTags([`user:${targetUserId}`, 'messageList']);
 
         this.logger.info({ userId: targetUserId }, 'Message list cache cleared for user');
     }
@@ -212,20 +184,92 @@ export class GmailService {
      */
     async clearProfileCache(userId?: number): Promise<void> {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
-        const cacheKey = cacheKeyGenerator(['getProfile', targetUserId]);
-        await this.cache.delete(cacheKey);
+
+        // Use TaggedKeyv to clear profile cache for this user
+        await this.cache.invalidateTags([`user:${targetUserId}`, 'profile']);
 
         this.logger.debug({ userId: targetUserId }, 'Profile cache cleared');
     }
 
     /**
-     * Clear all cache for a specific user
+     * Clear all cache for a specific user using TaggedKeyv
      */
     async clearAllUserCache(userId?: number): Promise<void> {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
 
-        await Promise.all([this.clearMessageListCache(targetUserId), this.clearProfileCache(targetUserId)]);
+        // Use TaggedKeyv to clear all cache entries for this user
+        await this.cache.invalidateTag(`user:${targetUserId}`);
 
         this.logger.info({ userId: targetUserId }, 'All cache cleared for user');
+    }
+
+    /**
+     * Fetch all labels with caching
+     */
+    async fetchLabels(): Promise<{ data: gmail_v1.Schema$Label[] }> {
+        const gmail = await this.createGmailClient();
+        const currentUser = await this.currentUserService.getCurrentUserOrFail();
+        const cacheKey = cacheKeyGenerator(['fetchLabels', currentUser.id]);
+        const cache = (await this.cache.get(cacheKey)) as gmail_v1.Schema$Label[] | undefined;
+
+        if (cache) {
+            this.logger.debug({ userId: currentUser.id }, 'Labels fetched from cache');
+            return { data: cache };
+        }
+
+        this.logger.debug({ userId: currentUser.id }, 'Fetching Gmail labels');
+        const response = await gmail.users.labels.list({ userId: 'me' });
+        const labels = response.data.labels || [];
+
+        // Cache for 10 minutes (labels don't change frequently)
+        await this.cache.set(cacheKey, labels, 60 * 10 * 1000, [`user:${currentUser.id}`, 'labels']);
+        return { data: labels };
+    }
+
+    /**
+     * Fetch history changes with caching
+     */
+    async fetchHistory(startHistoryId: string): Promise<{ data: gmail_v1.Schema$History[] }> {
+        const gmail = await this.createGmailClient();
+        const currentUser = await this.currentUserService.getCurrentUserOrFail();
+        const cacheKey = cacheKeyGenerator(['fetchHistory', currentUser.id, startHistoryId]);
+        const cache = (await this.cache.get(cacheKey)) as gmail_v1.Schema$History[] | undefined;
+
+        if (cache) {
+            this.logger.debug({ userId: currentUser.id, startHistoryId }, 'History fetched from cache');
+            return { data: cache };
+        }
+
+        this.logger.debug({ userId: currentUser.id, startHistoryId }, 'Fetching Gmail history');
+        const response = await gmail.users.history.list({
+            userId: 'me',
+            startHistoryId,
+            historyTypes: ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'],
+        });
+        const history = response.data.history || [];
+
+        // Cache for 5 minutes (history is time-sensitive)
+        await this.cache.set(cacheKey, history, 60 * 5 * 1000, [`user:${currentUser.id}`, 'history']);
+        return { data: history };
+    }
+
+    /**
+     * Get current historyId (always fresh, no caching)
+     */
+    async getCurrentHistoryId(): Promise<string> {
+        const profile = await this.getProfile();
+        if (!profile.data.historyId) {
+            throw new Error('historyId not available in Gmail profile');
+        }
+        return profile.data.historyId;
+    }
+
+    /**
+     * Clear labels cache
+     */
+    async clearLabelsCache(userId?: number): Promise<void> {
+        const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
+        await this.cache.invalidateTags([`user:${targetUserId}`, 'labels']);
+        this.logger.debug({ userId: targetUserId }, 'Labels cache cleared');
     }
 }
