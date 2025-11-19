@@ -18,6 +18,19 @@ export const AppConfigSchema = z.object({
         clientId: z.string(),
         clientSecret: z.string(),
     }),
+    workers: z
+        .object({
+            enabled: z.boolean().default(true),
+            gracefulShutdownTimeout: z.number().default(30000), // 30 seconds
+            healthCheckInterval: z.number().default(30000), // 30 seconds
+            autoRestart: z.boolean().default(true),
+        })
+        .default({
+            enabled: true,
+            gracefulShutdownTimeout: 30000,
+            healthCheckInterval: 30000,
+            autoRestart: true,
+        }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

@@ -65,6 +65,26 @@ services:
     restart: unless-stopped
     command: valkey-server --appendonly yes
 
+  bullboard:
+    image: deadly0/bull-board:latest
+    container_name: gmail-intelligence-bullboard
+    ports:
+      - "4500:3000"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      BULL_VERSION: BULLMQ
+      BULL_PREFIX: bull
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   gee-mailer-dev-postgres_data:
   gee-mailer-dev-meilisearch_data:

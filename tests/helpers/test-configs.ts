@@ -15,6 +15,12 @@ export const baseConfig: AppConfig = {
         clientId: '',
         clientSecret: '',
     },
+    workers: {
+        enabled: true,
+        gracefulShutdownTimeout: 30000,
+        healthCheckInterval: 30000,
+        autoRestart: true,
+    },
 };
 
 export const developmentConfig: AppConfig = merge(baseConfig, {

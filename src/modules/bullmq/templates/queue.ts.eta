@@ -1,0 +1,10 @@
+import { Queue } from 'bullmq';
+import queueConfig from '../queueDefinitions';
+
+<% Object.keys(it.config.queues).forEach(queueName => { %>
+export const <%= queueName %>Queue = new Queue('<%= queueName %>', {
+    ...queueConfig.queues.<%= queueName %>.options,
+    connection: queueConfig.connection,
+});
+
+<% }); %>
