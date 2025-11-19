@@ -98,7 +98,10 @@ export class GmailService {
             'Message list fetched successfully'
         );
         // Use TaggedKeyv to tag cache entries for easier bulk deletion
-        await this.cache.set(cacheKey, results.data, 60 * 5 * 1000, [`user:${currentUser.id}`, 'messageList']);
+        await this.cache.set(cacheKey, results.data, 60 * 5 * 1000, [
+            `user:${currentUser.id}`,
+            `user:${currentUser.id}:messageList`,
+        ]);
         return { data: results.data };
     }
 
@@ -125,7 +128,10 @@ export class GmailService {
         });
 
         // Cache for 30 minutes (messages don't change often)
-        await this.cache.set(cacheKey, result.data, 60 * 30 * 1000, [`user:${currentUser.id}`, 'message']);
+        await this.cache.set(cacheKey, result.data, 60 * 30 * 1000, [
+            `user:${currentUser.id}`,
+            `user:${currentUser.id}:message`,
+        ]);
 
         return { data: result.data };
     }
@@ -151,7 +157,10 @@ export class GmailService {
         });
 
         // Cache for 1 hour (profile data changes rarely)
-        await this.cache.set(cacheKey, result.data, 60 * 60 * 1000, [`user:${currentUser.id}`, 'profile']);
+        await this.cache.set(cacheKey, result.data, 60 * 60 * 1000, [
+            `user:${currentUser.id}`,
+            `user:${currentUser.id}:profile`,
+        ]);
 
         return { data: result.data };
     }
@@ -163,7 +172,7 @@ export class GmailService {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
 
         // Use TaggedKeyv to clear all message list entries for this user
-        await this.cache.invalidateTags([`user:${targetUserId}`, 'messageList']);
+        await this.cache.invalidateTag(`user:${targetUserId}:messageList`);
 
         this.logger.info({ userId: targetUserId }, 'Message list cache cleared for user');
     }
@@ -186,7 +195,7 @@ export class GmailService {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
 
         // Use TaggedKeyv to clear profile cache for this user
-        await this.cache.invalidateTags([`user:${targetUserId}`, 'profile']);
+        await this.cache.invalidateTag(`user:${targetUserId}:profile`);
 
         this.logger.debug({ userId: targetUserId }, 'Profile cache cleared');
     }
@@ -222,7 +231,10 @@ export class GmailService {
         const labels = response.data.labels || [];
 
         // Cache for 10 minutes (labels don't change frequently)
-        await this.cache.set(cacheKey, labels, 60 * 10 * 1000, [`user:${currentUser.id}`, 'labels']);
+        await this.cache.set(cacheKey, labels, 60 * 10 * 1000, [
+            `user:${currentUser.id}`,
+            `user:${currentUser.id}:labels`,
+        ]);
         return { data: labels };
     }
 
@@ -249,7 +261,10 @@ export class GmailService {
         const history = response.data.history || [];
 
         // Cache for 5 minutes (history is time-sensitive)
-        await this.cache.set(cacheKey, history, 60 * 5 * 1000, [`user:${currentUser.id}`, 'history']);
+        await this.cache.set(cacheKey, history, 60 * 5 * 1000, [
+            `user:${currentUser.id}`,
+            `user:${currentUser.id}:history`,
+        ]);
         return { data: history };
     }
 
@@ -269,7 +284,7 @@ export class GmailService {
      */
     async clearLabelsCache(userId?: number): Promise<void> {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
-        await this.cache.invalidateTags([`user:${targetUserId}`, 'labels']);
+        await this.cache.invalidateTag(`user:${targetUserId}:labels`);
         this.logger.debug({ userId: targetUserId }, 'Labels cache cleared');
     }
 }
