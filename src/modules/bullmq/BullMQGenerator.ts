@@ -10,6 +10,7 @@ export type BullMQCodeGenOptions = {
     config: QueueConfig | string; // QueueConfig object or path to config file
     outDir: string;
     templatesDir?: string; // Optional, defaults to built-in templates
+    rootDir?: string; // Optional, defaults to process.cwd()
 };
 
 export class BullMQCodeGen {
@@ -18,12 +19,14 @@ export class BullMQCodeGen {
     protected configPath: string | null;
     protected outDir: string;
     protected templatesDir: string;
+    protected rootDir: string;
     protected eta: Eta;
 
-    constructor({ logger, config, outDir, templatesDir }: BullMQCodeGenOptions) {
+    constructor({ logger, config, outDir, templatesDir, rootDir }: BullMQCodeGenOptions) {
         this.logger = logger.child({ module: 'BullMQCodeGen' });
         this.outDir = outDir;
         this.templatesDir = templatesDir ?? this.getDefaultTemplatesDir();
+        this.rootDir = rootDir ?? process.cwd();
 
         // Initialize Eta with templates directory
         this.eta = new Eta({ views: this.templatesDir });
@@ -158,7 +161,7 @@ export class BullMQCodeGen {
         });
 
         // Write to project root, not the outDir
-        const rootPath = path.resolve('./ecosystem.config.cjs');
+        const rootPath = path.resolve(this.rootDir, 'ecosystem.config.cjs');
         await writeFile(rootPath, content, 'utf-8');
         this.logger.debug('Generated ecosystem.config.cjs');
     }

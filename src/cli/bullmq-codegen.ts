@@ -15,4 +15,5 @@ main({
     config: `${rootDir}/src/queues/queueDefinitions.ts`, // Path to config file
     outDir: `${rootDir}/src/queues/generated`,
     templatesDir: `${rootDir}/src/modules/bullmq/templates`,
+    rootDir: rootDir, // Explicitly pass rootDir for ecosystem.config.cjs generation
 }).catch(console.error);
