@@ -55,7 +55,7 @@ module.exports = {
             watch: false, // Don't watch for file changes in production workers
             ignore_watch: ['node_modules', 'logs'],
             // Graceful shutdown for workers
-            listen_timeout: 5000
+            listen_timeout: 5000,
         },
     ],
 };
