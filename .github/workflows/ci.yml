@@ -65,7 +65,10 @@ jobs:
       - name: Run security audit
         run: |
           echo "🔍 Running security audit..."
-          # Ignore known low-risk vulnerabilities in transitive dependencies
+          # Temporarily ignore known low-risk vulnerabilities in transitive dependencies:
+          # - GHSA-5j98-mcp5-4vw2 (glob CLI injection): Not vulnerable - we don't use glob CLI with -c flag
+          # - GHSA-mh29-5h37-fv8m (js-yaml prototype pollution): Not vulnerable - we only parse trusted YAML files
+          # TODO: Remove ignores when dependencies upgrade to fixed versions (track in issue #XX)
           bun audit \
             --ignore=GHSA-5j98-mcp5-4vw2 \
             --ignore=GHSA-mh29-5h37-fv8m \

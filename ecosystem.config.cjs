@@ -4,7 +4,6 @@ module.exports = {
             name: 'gee-mailer-api',
             script: 'src/index.ts',
             interpreter: 'bun',
-            interpreter_args: '--hot',
             instances: process.env.API_INSTANCES || 'max',
             exec_mode: 'cluster',
             env: {
@@ -29,13 +28,13 @@ module.exports = {
             name: 'gee-mailer-workers',
             script: 'src/workers.ts',
             interpreter: 'bun',
+            // WORKER_INSTANCES should be tuned for workload, not just queue count
             instances: process.env.WORKER_INSTANCES || 2,
             exec_mode: 'cluster',
             env: {
                 NODE_ENV: 'development',
                 WORKER_ENABLED: true,
-                // afterSignUpEmail worker (queue: emailSend)
-                // dbCleanUp worker (queue: dbOperations)
+                // Worker processes automatically discover and run all defined workers
             },
             env_production: {
                 NODE_ENV: 'production',

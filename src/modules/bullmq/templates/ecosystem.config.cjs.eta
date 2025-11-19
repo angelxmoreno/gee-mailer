@@ -4,7 +4,6 @@ module.exports = {
             name: 'gee-mailer-api',
             script: 'src/index.ts',
             interpreter: 'bun',
-            interpreter_args: '--hot',
             instances: process.env.API_INSTANCES || 'max',
             exec_mode: 'cluster',
             env: {
@@ -29,16 +28,13 @@ module.exports = {
             name: 'gee-mailer-workers',
             script: 'src/workers.ts',
             interpreter: 'bun',
-            instances: process.env.WORKER_INSTANCES || <%= Object.keys(it.config.queues).length %>,
+            // WORKER_INSTANCES should be tuned for workload, not just queue count
+            instances: process.env.WORKER_INSTANCES || <%= (it.config && typeof it.config.queues === 'object' && it.config.queues !== null) ? Object.keys(it.config.queues).length : 2 %>,
             exec_mode: 'cluster',
             env: {
                 NODE_ENV: 'development',
                 WORKER_ENABLED: true,
-<% Object.entries(it.config.queues).forEach(([queueName, queueDef]) => { %>
-<% Object.entries(queueDef.workers).forEach(([workerName, workerDef]) => { %>
-                // <%= workerName %> worker (queue: <%= queueName %>)
-<% }); %>
-<% }); %>
+                // Worker processes automatically discover and run all defined workers
             },
             env_production: {
                 NODE_ENV: 'production',
