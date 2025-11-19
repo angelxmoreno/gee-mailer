@@ -6,6 +6,7 @@ import type { AppConfig } from '@app/types/AppConfig';
 import { createBaseLogger } from '@app/utils/createBaseLogger';
 import { createCacheStore } from '@app/utils/createCacheStore';
 import { AppCache, AppLogger } from '@app/utils/tokens';
+import { TaggedKeyv } from 'tagged-keyv-wrapper';
 import { container, type DependencyContainer, type InjectionToken, instanceCachingFactory } from 'tsyringe';
 import { DataSource } from 'typeorm';
 
@@ -24,6 +25,7 @@ export const createContainer = (config: AppConfig): DependencyContainer => {
 
     // Register base Keyv instance
     registerFactory(AppCache, () => createCacheStore(config.cacheUrl));
+    registerFactory(TaggedKeyv, (c) => new TaggedKeyv(c.resolve(AppCache)));
 
     // create typeorm datasource
     registerFactory(DataSource, () => new DataSource(createDataSourceOptions(config)));
