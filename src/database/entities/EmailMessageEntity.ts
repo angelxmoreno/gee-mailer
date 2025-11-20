@@ -5,6 +5,7 @@ import { MessagePartEntity } from './MessagePartEntity';
 
 @Entity()
 @Index(['userId', 'messageId'], { unique: true })
+@Index(['userId', 'internalDate'], { unique: false })
 export class EmailMessageEntity extends AppEntity {
     @Column({ type: 'varchar', length: 64 })
     @Index({ unique: true })
