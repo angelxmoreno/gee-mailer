@@ -140,7 +140,7 @@ Schedule Next Incremental
 // LabelEntity.ts - extends AppEntity, belongs to one user
 @Entity()
 // Unique constraint for labelId + userId combination
-@Unique(['labelId', 'userId'])
+@Index(['labelId', 'userId'], { unique: true })
 export class LabelEntity extends AppEntity {
   @Column({ unique: true })
   labelId: string; // Gmail label ID
@@ -175,9 +175,6 @@ export class LabelEntity extends AppEntity {
   @Column({ default: 0 })
   threadsUnread: number;
 
-  @UpdateDateColumn()
-  lastSyncedAt: Date;
-
   // Relationship to user
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
@@ -204,608 +201,290 @@ export class UserEntity extends AppEntity {
   @Column({ nullable: true })
   lastIncrementalSyncAt: Date; // Track when last incremental sync occurred
 
-  // One-to-many relationship with labels
-  @OneToMany(() => LabelEntity, label => label.user, { cascade: ['remove'] })
-  labels: Relation<LabelEntity[]>;
+  // Note: No OneToMany relationship to labels - we query labels by userId instead
 }
 ```
 
-#### **Enhanced GmailService Methods**
+#### **GmailService Methods Status**
+
+The following methods are **ALREADY IMPLEMENTED** in `src/services/GmailService.ts`:
+
+✅ **Existing Methods:**
+- `fetchLabels()` - Fetch all labels with TaggedKeyv caching (5-minute cache)
+- `fetchHistory(startHistoryId)` - Fetch history changes with caching (5-minute cache)
+- `getCurrentHistoryId()` - Get current historyId from profile (no cache)
+- `clearLabelsCache(userId)` - Clear labels cache using TaggedKeyv tags
+
+✅ **Enhanced Caching Features Already Present:**
+- Uses `TaggedKeyv` for advanced cache invalidation by user/type
+- All methods include proper cache tagging (e.g., `user:${userId}:labels`)
+- Cache invalidation by tags instead of individual keys
+- Structured logging with user and operation context
+
+✅ **Recently Added:**
+- `batchFetchMessages(messageIds)` - Batch fetch multiple messages with rate limiting
+
+**Implementation Details:**
+- Reuses existing `fetchMessage()` method for caching and error handling
+- Processes messages in batches of 10 to avoid overwhelming the Gmail API
+- Includes 100ms delay between batches for rate limiting
+- Leverages existing TaggedKeyv caching automatically
+
+### **Processor Implementation Notes**
+
+Following the BullMQ convention, all processors are defined inline within the `queueDefinitions.ts` file. The processors should:
+
+1. **Use dependency injection**: Resolve services via `container.resolve(ServiceName)`
+2. **Return structured results**: Include userId and operation details for tracking
+3. **Handle errors gracefully**: Let BullMQ retry logic handle failures
+4. **Update progress**: Use `job.updateProgress()` for long-running operations
+5. **Log appropriately**: Use resolved logger services for consistent logging
+
+#### **Key Implementation Points**
+
+**Initial Sync Flow:**
+- Create sync progress record
+- Schedule label sync job first (dependency)
+- Fetch message IDs in batches and store in database with `internalDate: null`
+- Schedule single message batch job to start processing
+- Store historyId for future incremental syncs
+
+**Incremental Sync Flow:**
+- Check initial sync completion
+- Validate historyId availability
+- Fetch and process history changes
+- Store new message IDs with `internalDate: null` for processing
+- Handle deletions and label changes immediately
+- Update historyId for next sync
+
+**Message Batch Processing (Strategy-Based):**
+
+**For `syncType: 'initial'`:**
+- Query: `{ userId, internalDate: null }` ordered by `createdAt: ASC`
+- Goal: Stable progress through entire mailbox from oldest to newest
+- Behavior: Systematic processing for complete mailbox sync
+
+**For `syncType: 'incremental'`:**
+- Query: `{ userId, internalDate: null, createdAt >= lastIncrementalSyncAt }` ordered by `createdAt: DESC`
+- Goal: Fast processing of recent changes for immediate user feedback
+- Behavior: Prioritizes newest messages, optionally filters to recent additions
+
+**Common Processing:**
+- Process up to `batchSize` messages through Gmail API
+- Update entities with fetched data and set `internalDate`
+- Self-schedule next batch with same strategy if more messages exist
+- No complex batch coordination needed
+
+**Label Sync:**
+- Fetch all Gmail labels
+- Upsert label entities with proper user association
+- Remove labels that no longer exist
+- Update sync completion status
+
+### **Type Definitions**
+
+First, add Gmail sync-specific types to `src/queues/types.ts`:
 
 ```typescript
-// Add to GmailService.ts
-export class GmailService {
-  // Existing methods...
+import { z } from 'zod';
 
-  /**
-   * Fetch all labels with caching
-   */
-  async fetchLabels(): Promise<{ data: gmail_v1.Schema$Label[] }> {
-    const gmail = await this.createGmailClient();
-    const currentUser = await this.currentUserService.getCurrentUserOrFail();
-    const cacheKey = cacheKeyGenerator(['fetchLabels', currentUser.id]);
-    const cache = (await this.cache.get(cacheKey)) as gmail_v1.Schema$Label[] | undefined;
+// Reusable base schemas
+export const UserIdentifier = z.object({
+    userId: z.number()
+});
 
-    if (cache) {
-      this.logger.debug({ userId: currentUser.id }, 'Labels fetched from cache');
-      return { data: cache };
-    }
+// Gmail sync job schemas
+export const InitialSyncSchema = UserIdentifier;
 
-    this.logger.debug({ userId: currentUser.id }, 'Fetching Gmail labels');
-    const response = await gmail.users.labels.list({ userId: 'me' });
-    const labels = response.data.labels || [];
+export const IncrementalSyncSchema = UserIdentifier;
 
-    // Cache for 10 minutes (labels don't change frequently)
-    this.cache.set(cacheKey, labels, 60 * 10 * 1000);
-    return { data: labels };
-  }
+export const MessageBatchSchema = UserIdentifier.extend({
+    batchSize: z.number().default(50),
+    syncProgressId: z.number().optional(),
+    syncType: z.enum(['initial', 'incremental']),
+    lastIncrementalSyncAt: z.date().optional() // For incremental sync filtering
+});
 
-  /**
-   * Fetch history changes with caching
-   */
-  async fetchHistory(startHistoryId: string): Promise<{ data: gmail_v1.Schema$History[] }> {
-    const gmail = await this.createGmailClient();
-    const currentUser = await this.currentUserService.getCurrentUserOrFail();
-    const cacheKey = cacheKeyGenerator(['fetchHistory', currentUser.id, startHistoryId]);
-    const cache = (await this.cache.get(cacheKey)) as gmail_v1.Schema$History[] | undefined;
+export const LabelSyncSchema = UserIdentifier;
 
-    if (cache) {
-      this.logger.debug({ userId: currentUser.id, startHistoryId }, 'History fetched from cache');
-      return { data: cache };
-    }
-
-    this.logger.debug({ userId: currentUser.id, startHistoryId }, 'Fetching Gmail history');
-    const response = await gmail.users.history.list({
-      userId: 'me',
-      startHistoryId,
-      historyTypes: ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved']
-    });
-    const history = response.data.history || [];
-
-    // Cache for 5 minutes (history is time-sensitive)
-    this.cache.set(cacheKey, history, 60 * 5 * 1000);
-    return { data: history };
-  }
-
-  /**
-   * Get current historyId (always fresh, no caching)
-   */
-  async getCurrentHistoryId(): Promise<string> {
-    const profile = await this.getProfile();
-    return profile.data.historyId!;
-  }
-
-  /**
-   * Batch fetch message details by IDs
-   */
-  async batchFetchMessages(messageIds: string[]): Promise<{ data: MessageResponse[] }> {
-    const gmail = await this.createGmailClient();
-    const currentUser = await this.currentUserService.getCurrentUserOrFail();
-    const messages: MessageResponse[] = [];
-
-    // Process in batches to avoid overwhelming the API
-    const batchSize = 10;
-    for (let i = 0; i < messageIds.length; i += batchSize) {
-      const batch = messageIds.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (messageId) => {
-        const cached = await this.getCachedMessage(messageId, currentUser.id);
-        if (cached) return cached;
-
-        const result = await gmail.users.messages.get({
-          userId: 'me',
-          id: messageId,
-          format: 'full',
-        });
-
-        // Cache individual message
-        const cacheKey = cacheKeyGenerator(['fetchMessage', currentUser.id, messageId]);
-        this.cache.set(cacheKey, result.data, 60 * 30 * 1000);
-
-        return result.data;
-      });
-
-      const batchResults = await Promise.all(batchPromises);
-      messages.push(...batchResults.filter(Boolean) as MessageResponse[]);
-
-      // Add delay between batches to respect rate limits
-      if (i + batchSize < messageIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-
-    return { data: messages };
-  }
-
-  /**
-   * Get cached message if available
-   */
-  protected async getCachedMessage(messageId: string, userId: number): Promise<MessageResponse | null> {
-    const cacheKey = cacheKeyGenerator(['fetchMessage', userId, messageId]);
-    return (await this.cache.get(cacheKey)) as MessageResponse || null;
-  }
-
-  /**
-   * Clear labels cache
-   */
-  async clearLabelsCache(userId?: number): Promise<void> {
-    const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
-    const cacheKey = cacheKeyGenerator(['fetchLabels', targetUserId]);
-    await this.cache.delete(cacheKey);
-    this.logger.debug({ userId: targetUserId }, 'Labels cache cleared');
-  }
-}
+// Type inference for better TypeScript support
+export type UserIdentifierPayload = z.infer<typeof UserIdentifier>;
+export type InitialSyncPayload = z.infer<typeof InitialSyncSchema>;
+export type IncrementalSyncPayload = z.infer<typeof IncrementalSyncSchema>;
+export type MessageBatchPayload = z.infer<typeof MessageBatchSchema>;
+export type LabelSyncPayload = z.infer<typeof LabelSyncSchema>;
 ```
 
-### **Enhanced Job Processors**
+### **Queue Configuration Updates**
 
-#### **Initial Sync Processor**
+Then update `src/queues/queueDefinitions.ts`:
+
 ```typescript
-// workers/sync/InitialSyncProcessor.ts
-export const initialSyncProcessor = async (job: Job<InitialSyncPayload>) => {
-  const { userId } = job.data;
+import { createQueueConfig } from '@app/modules/bullmq/types';
+import type { Job } from 'bullmq';
+import { container } from 'tsyringe';
 
-  // 1. Ensure this is not running while incremental sync is active
-  const user = await getUserById(userId);
-  if (user.initialSyncCompleted) {
-    return { action: 'already_completed', userId };
-  }
+// Import project-specific types
+import {
+  InitialSyncSchema,
+  IncrementalSyncSchema,
+  MessageBatchSchema,
+  LabelSyncSchema,
+  type InitialSyncPayload,
+  type IncrementalSyncPayload,
+  type MessageBatchPayload,
+  type LabelSyncPayload
+} from './types';
 
-  // 2. Create sync progress record
-  const progress = await createSyncProgress(userId, 'initial');
+// Import services needed by processors
+import { GmailService } from '@app/services/GmailService';
+import { SyncProgressRepository } from '@app/database/repositories';
+// ... other service imports
 
-  try {
-    // 3. Schedule label sync first (blocking dependency)
-    await labelSyncQueue.add('labelSync', { userId }, { priority: 100 });
-    await job.updateProgress(10);
+const queueConfig = createQueueConfig({
+  queues: {
+    // ... existing queues (emailSend, dbOperations)
 
-    // 4. Two-phase message sync for large mailboxes
-    // Phase 1: Collect and store all message IDs (persistent storage)
-    let pageToken = null;
-    let totalMessagesStored = 0;
-    let pageCount = 0;
+    gmailSync: {
+      options: {
+        defaultJobOptions: {
+          removeOnComplete: 50,
+          removeOnFail: 100,
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 5000 },
+        },
+      },
+      workers: {
+        initialSync: {
+          schema: InitialSyncSchema,
+          processor: async (job: Job<InitialSyncPayload>) => {
+            const { userId } = job.data;
+            const gmailService = container.resolve(GmailService);
+            const syncProgressRepo = container.resolve(SyncProgressRepository);
+            // Implementation here...
+            console.log('Processing initial sync for user:', userId);
+            return { userId, action: 'completed' };
+          },
+          options: {
+            concurrency: 1,
+            limiter: { max: 3, duration: 60000 },
+          },
+        },
+        incrementalSync: {
+          schema: IncrementalSyncSchema,
+          processor: async (job: Job<IncrementalSyncPayload>) => {
+            const { userId } = job.data;
+            const gmailService = container.resolve(GmailService);
+            // Implementation here...
+            console.log('Processing incremental sync for user:', userId);
+            return { userId, action: 'completed' };
+          },
+          options: {
+            concurrency: 5,
+            limiter: { max: 15, duration: 60000 },
+          },
+        },
+        messageBatch: {
+          schema: MessageBatchSchema,
+          processor: async (job: Job<MessageBatchPayload>) => {
+            const { userId, batchSize, syncType, syncProgressId, lastIncrementalSyncAt } = job.data;
+            const gmailService = container.resolve(GmailService);
 
-    do {
-      const messageList = await gmailService.fetchMessageList(pageToken);
-      const messages = messageList.data.messages || [];
+            // Different query strategies based on sync type
+            let whereClause: any = { userId, internalDate: null };
+            let orderClause: any = undefined;
 
-      if (messages.length > 0) {
-        // Store message IDs in messages entity (without details yet)
-        const messageEntities = messages.map(msg => ({
-          messageId: msg.id!,
-          userId,
-          threadId: msg.threadId,
-          // Mark as unprocessed for detail fetching
-          detailsFetched: false,
-          createdAt: new Date()
-        }));
+            if (syncType === 'initial') {
+              // Initial sync: process all unprocessed messages, oldest first for stable progress
+              orderClause = { createdAt: 'ASC' };
+            } else if (syncType === 'incremental') {
+              // Incremental sync: prioritize recent messages, newest first for faster user feedback
+              orderClause = { createdAt: 'DESC' };
 
-        await messageRepository.upsert(messageEntities, ['messageId', 'userId']);
-        totalMessagesStored += messages.length;
-      }
+              // Optionally filter to messages added since last incremental sync
+              if (lastIncrementalSyncAt) {
+                whereClause.createdAt = { $gte: lastIncrementalSyncAt };
+              }
+            }
 
-      pageToken = messageList.data.nextPageToken;
-      pageCount++;
+            const unprocessedMessages = await messageRepository.find({
+              where: whereClause,
+              take: batchSize,
+              order: orderClause,
+              select: ['id', 'messageId', 'createdAt']
+            });
 
-      // Update progress for ID storage phase (10-60%)
-      await job.updateProgress(10 + Math.min(pageCount * 2, 50));
+            // Process each message
+            for (const entity of unprocessedMessages) {
+              const { data: gmailMessage } = await gmailService.fetchMessage(entity.messageId);
+              // Update entity with Gmail data including internalDate
+              await updateMessageEntity(entity.id, gmailMessage);
+            }
 
-    } while (pageToken);
+            // Check for remaining messages with same filter criteria
+            const remainingCount = await messageRepository.count({ where: whereClause });
 
-    await job.updateProgress(60);
-    this.logger.info({ userId, totalMessages: totalMessagesStored }, 'Message ID storage completed');
+            if (remainingCount > 0) {
+              // Schedule next batch with same parameters
+              await enqueueMessageBatch({
+                userId,
+                batchSize,
+                syncType,
+                syncProgressId,
+                lastIncrementalSyncAt
+              });
+            }
 
-    // Phase 2: Create batch jobs for detail fetching of stored message IDs
-    const batchSize = 50;
-    const unprocessedMessages = await messageRepository.find({
-      where: { userId, detailsFetched: false },
-      select: ['id', 'messageId']
-    });
-
-    const totalBatches = Math.ceil(unprocessedMessages.length / batchSize);
-
-    for (let i = 0; i < unprocessedMessages.length; i += batchSize) {
-      const batch = unprocessedMessages.slice(i, i + batchSize);
-      const batchNumber = Math.floor(i / batchSize) + 1;
-
-      await gmailSyncQueue.add('messageBatch', {
-        userId,
-        messageEntityIds: batch.map(m => m.id), // Use entity IDs, not Gmail message IDs
-        batchNumber,
-        totalBatches,
-        syncProgressId: progress.id,
-        syncType: 'initial'
-      }, {
-        priority: 50,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2000 }
-      });
-    }
-
-    // Update progress for batch creation (50-80%)
-    await job.updateProgress(80);
-
-    // 5. Store initial historyId for future incremental syncs
-    const historyId = await gmailService.getCurrentHistoryId();
-    await updateUserHistoryId(userId, historyId);
-    await job.updateProgress(90);
-
-    // 6. Mark initial sync as in progress (will be completed by final batch job)
-    await updateUserSyncState(userId, { initialSyncStarted: true });
-    await job.updateProgress(100);
-
-    return {
-      totalMessages: totalMessageIds.length,
-      batchesCreated: totalBatches,
-      historyId,
-      userId
-    };
-
-  } catch (error) {
-    await markSyncProgressFailed(progress.id, error.message);
-    throw error;
-  }
-};
-```
-
-#### **Label Sync Processor**
-```typescript
-// workers/labels/LabelSyncProcessor.ts
-export const labelSyncProcessor = async (job: Job<LabelSyncPayload>) => {
-  const { userId } = job.data;
-
-  try {
-    // 1. Fetch all labels from Gmail
-    const { data: gmailLabels } = await gmailService.fetchLabels();
-
-    // 2. Get existing labels for this user
-    const existingLabels = await labelRepository.find({ where: { userId } });
-    const existingLabelIds = new Set(existingLabels.map(l => l.labelId));
-
-    // 3. Process each Gmail label
-    const processedLabels: LabelEntity[] = [];
-
-    for (const gmailLabel of gmailLabels) {
-      if (!gmailLabel.id) continue;
-
-      // Upsert label entity
-      const labelData = {
-        labelId: gmailLabel.id,
-        userId,
-        name: gmailLabel.name || 'Unknown',
-        type: (gmailLabel.type === 'system' ? 'system' : 'user') as 'system' | 'user',
-        color: gmailLabel.color?.backgroundColor || null,
-        labelListVisibility: gmailLabel.labelListVisibility !== 'labelHide',
-        messageListVisibility: gmailLabel.messageListVisibility !== 'hide',
-        messagesTotal: gmailLabel.messagesTotal || 0,
-        messagesUnread: gmailLabel.messagesUnread || 0,
-        threadsTotal: gmailLabel.threadsTotal || 0,
-        threadsUnread: gmailLabel.threadsUnread || 0,
-        lastSyncedAt: new Date()
-      };
-
-      const label = await labelRepository.save(
-        labelRepository.create(labelData)
-      );
-      processedLabels.push(label);
-
-      // Remove from tracking set if it existed
-      existingLabelIds.delete(gmailLabel.id);
-    }
-
-    // 4. Remove labels that no longer exist in Gmail
-    if (existingLabelIds.size > 0) {
-      await labelRepository.delete({
-        userId,
-        labelId: In([...existingLabelIds])
-      });
-    }
-
-    // 5. Mark label sync as completed for this user
-    await updateUserSyncState(userId, { labelSyncCompleted: true });
-
-    return {
-      labelsProcessed: processedLabels.length,
-      labelsRemoved: existingLabelIds.size,
-      userId
-    };
-
-  } catch (error) {
-    this.logger.error({ userId, error }, 'Label sync failed');
-    throw error;
-  }
-};
-```
-
-#### **Incremental Sync Processor**
-```typescript
-// workers/sync/IncrementalSyncProcessor.ts
-export const incrementalSyncProcessor = async (job: Job<IncrementalSyncPayload>) => {
-  const { userId } = job.data;
-
-  // 1. Ensure initial sync has completed
-  const user = await getUserById(userId);
-  if (!user.initialSyncCompleted) {
-    this.logger.warn({ userId }, 'Incremental sync skipped - initial sync not completed');
-    return { action: 'initial_sync_required', userId };
-  }
-
-  // 2. Check if we have a valid historyId
-  const lastHistoryId = user.historyId;
-  if (!lastHistoryId) {
-    // No history available, schedule full sync
-    await gmailSyncQueue.add('initialSync', { userId });
-    return { action: 'no_history_fallback_to_full_sync', userId };
-  }
-
-  try {
-    // 3. Fetch history since last sync
-    const { data: history } = await gmailService.fetchHistory(lastHistoryId);
-
-    if (history.length === 0) {
-      // Update last incremental sync timestamp even if no changes
-      await updateUserSyncState(userId, { lastIncrementalSyncAt: new Date() });
-      return { action: 'no_changes', userId };
-    }
-
-    // 4. Process history changes
-    const changes = await processHistoryChanges(history, userId);
-
-    // 5. Create batch jobs for affected messages (if any)
-    if (changes.messagesAdded.length > 0) {
-      const batchSize = 25; // Smaller batches for incremental updates
-      const totalBatches = Math.ceil(changes.messagesAdded.length / batchSize);
-
-      for (let i = 0; i < changes.messagesAdded.length; i += batchSize) {
-        const batchIds = changes.messagesAdded.slice(i, i + batchSize);
-        const batchNumber = Math.floor(i / batchSize) + 1;
-
-        await gmailSyncQueue.add('messageBatch', {
-          userId,
-          messageIds: batchIds,
-          batchNumber,
-          totalBatches,
-          syncType: 'incremental'
-        }, {
-          priority: 75, // Higher priority than initial sync batches
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 1000 }
-        });
-      }
-    }
-
-    // 6. Handle deletions and label changes immediately
-    await handleMessageDeletions(changes.messagesDeleted, userId);
-    await handleLabelChanges(changes.labelChanges, userId);
-
-    // 7. Store new historyId and update timestamps
-    const newHistoryId = await gmailService.getCurrentHistoryId();
-    await updateUserSyncState(userId, {
-      historyId: newHistoryId,
-      lastIncrementalSyncAt: new Date()
-    });
-
-    return {
-      changesProcessed: history.length,
-      messagesAdded: changes.messagesAdded.length,
-      messagesDeleted: changes.messagesDeleted.length,
-      labelChanges: changes.labelChanges.length,
-      batchesCreated: Math.ceil(changes.messagesAdded.length / 25),
-      newHistoryId,
-      userId
-    };
-
-  } catch (error) {
-    if (error.status === 404 || error.code === 'HISTORY_ID_TOO_OLD') {
-      // History expired, fallback to full sync
-      this.logger.warn({ userId, lastHistoryId }, 'History ID expired, falling back to full sync');
-      await updateUserSyncState(userId, { initialSyncCompleted: false, historyId: null });
-      await gmailSyncQueue.add('initialSync', { userId }, { priority: 80 });
-      return { action: 'history_expired_fallback', userId };
-    }
-    throw error; // Re-throw for retry logic
-  }
-};
-
-/**
- * Process history changes and extract affected message IDs
- */
-protected async processHistoryChanges(history: gmail_v1.Schema$History[], userId: number) {
-  const messagesAdded: string[] = [];
-  const messagesDeleted: string[] = [];
-  const labelChanges: Array<{ messageId: string; labelsAdded: string[]; labelsRemoved: string[] }> = [];
-
-  for (const historyItem of history) {
-    // Handle added messages
-    if (historyItem.messagesAdded) {
-      for (const added of historyItem.messagesAdded) {
-        if (added.message?.id) {
-          messagesAdded.push(added.message.id);
-        }
-      }
-    }
-
-    // Handle deleted messages
-    if (historyItem.messagesDeleted) {
-      for (const deleted of historyItem.messagesDeleted) {
-        if (deleted.message?.id) {
-          messagesDeleted.push(deleted.message.id);
-        }
-      }
-    }
-
-    // Handle label changes
-    if (historyItem.labelsAdded) {
-      for (const labelAdded of historyItem.labelsAdded) {
-        if (labelAdded.message?.id) {
-          labelChanges.push({
-            messageId: labelAdded.message.id,
-            labelsAdded: labelAdded.labelIds || [],
-            labelsRemoved: []
-          });
-        }
-      }
-    }
-
-    if (historyItem.labelsRemoved) {
-      for (const labelRemoved of historyItem.labelsRemoved) {
-        if (labelRemoved.message?.id) {
-          // Find existing change record or create new one
-          let change = labelChanges.find(c => c.messageId === labelRemoved.message!.id);
-          if (!change) {
-            change = {
-              messageId: labelRemoved.message.id,
-              labelsAdded: [],
-              labelsRemoved: labelRemoved.labelIds || []
+            console.log(`[${syncType}] Processed ${unprocessedMessages.length} messages for user ${userId}`);
+            return {
+              userId,
+              syncType,
+              messagesProcessed: unprocessedMessages.length,
+              remainingMessages: remainingCount
             };
-            labelChanges.push(change);
-          } else {
-            change.labelsRemoved.push(...(labelRemoved.labelIds || []));
-          }
-        }
-      }
-    }
-  }
+          },
+          options: {
+            concurrency: 8,
+            limiter: { max: 60, duration: 60000 },
+          },
+        },
+      },
+    },
 
-  // Remove duplicates
-  return {
-    messagesAdded: [...new Set(messagesAdded)],
-    messagesDeleted: [...new Set(messagesDeleted)],
-    labelChanges
-  };
-}
-```
-
-### **Queue Configuration**
-
-```typescript
-// Add to queueDefinitions.ts
-
-// Job schemas
-const InitialSyncSchema = z.object({
-  userId: z.number()
+    gmailLabels: {
+      options: {
+        defaultJobOptions: {
+          removeOnComplete: 20,
+          removeOnFail: 50,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 3000 },
+        },
+      },
+      workers: {
+        labelSync: {
+          schema: LabelSyncSchema,
+          processor: async (job: Job<LabelSyncPayload>) => {
+            const { userId } = job.data;
+            const gmailService = container.resolve(GmailService);
+            // Implementation here...
+            console.log('Processing label sync for user:', userId);
+            return { userId, labelsProcessed: 0, labelsRemoved: 0 };
+          },
+          options: {
+            concurrency: 3,
+            limiter: { max: 10, duration: 60000 },
+          },
+        },
+      },
+    },
+  },
+  connection: {
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: Number.parseInt(process.env.REDIS_PORT ?? '4379', 10),
+    password: process.env.REDIS_PASSWORD,
+    db: Number.parseInt(process.env.REDIS_DB ?? '0', 10),
+  },
 });
-
-const IncrementalSyncSchema = z.object({
-  userId: z.number()
-});
-
-const MessageBatchSchema = z.object({
-  userId: z.number(),
-  messageEntityIds: z.array(z.number()), // Database entity IDs, not Gmail message IDs
-  batchNumber: z.number(),
-  totalBatches: z.number().optional(),
-  syncProgressId: z.number().optional(),
-  syncType: z.enum(['initial', 'incremental'])
-});
-
-const LabelSyncSchema = z.object({
-  userId: z.number()
-});
-
-// Queue configurations
-const gmailSync = {
-  options: {
-    defaultJobOptions: {
-      removeOnComplete: 50,
-      removeOnFail: 100,
-      attempts: 5,
-      backoff: {
-        type: 'exponential',
-        delay: 5000
-      },
-    },
-  },
-  workers: {
-    initialSync: {
-      schema: InitialSyncSchema,
-      processor: initialSyncProcessor,
-      options: {
-        concurrency: 1, // One full sync per user at a time
-        limiter: {
-          max: 3, // Conservative limit for initial syncs
-          duration: 60000,
-        },
-      },
-    },
-    incrementalSync: {
-      schema: IncrementalSyncSchema,
-      processor: incrementalSyncProcessor,
-      options: {
-        concurrency: 5, // Multiple incremental syncs can run
-        limiter: {
-          max: 15, // More frequent for incremental updates
-          duration: 60000,
-        },
-      },
-    },
-    messageBatch: {
-      schema: MessageBatchSchema,
-      processor: messageBatchProcessor,
-      options: {
-        concurrency: 8, // High concurrency for batch processing
-        limiter: {
-          max: 60, // Respect Gmail API quota limits
-          duration: 60000,
-        },
-      },
-    },
-  },
-},
-
-gmailLabels: {
-  options: {
-    defaultJobOptions: {
-      removeOnComplete: 20,
-      removeOnFail: 50,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 3000 },
-    },
-  },
-  workers: {
-    labelSync: {
-      schema: LabelSyncSchema,
-      processor: labelSyncProcessor,
-      options: {
-        concurrency: 3, // Multiple users can sync labels simultaneously
-        limiter: {
-          max: 10, // Labels don't change frequently
-          duration: 60000,
-        },
-      },
-    },
-  },
-},
-
-// Sync state management queue for coordination
-gmailMaintenance: {
-  options: {
-    defaultJobOptions: {
-      removeOnComplete: 10,
-      removeOnFail: 20,
-      attempts: 2,
-    },
-  },
-  workers: {
-    syncStateCheck: {
-      schema: z.object({ userId: z.number() }),
-      processor: syncStateCheckProcessor,
-      options: {
-        concurrency: 2,
-        limiter: {
-          max: 20, // Health checks can be frequent
-          duration: 60000,
-        },
-      },
-    },
-    scheduledIncrementalSync: {
-      schema: z.object({}), // Runs for all eligible users
-      processor: scheduledIncrementalSyncProcessor,
-      options: {
-        concurrency: 1, // Single scheduler process
-      },
-    },
-  },
-},
 ```
 
 ### **Benefits of This Architecture**
@@ -887,89 +566,6 @@ export class SyncProgressEntity extends AppEntity {
 }
 ```
 
-#### **SyncProgressService**
-```typescript
-// services/SyncProgressService.ts
-import { SyncProgressRepository } from '@app/database/repositories';
-import { SyncProgressEntity } from '@app/database/entities';
-import { inject, singleton } from 'tsyringe';
-
-@singleton()
-export class SyncProgressService {
-    constructor(
-        @inject(SyncProgressRepository) protected syncProgressRepository: SyncProgressRepository
-    ) {}
-
-    async createSyncProgress(
-        userId: number,
-        syncType: 'initial' | 'incremental' | 'labels' = 'initial'
-    ): Promise<SyncProgressEntity> {
-        // Remove any existing progress for this user and sync type
-        await this.syncProgressRepository.delete({ userId, syncType });
-
-        const progress = this.syncProgressRepository.create({
-            userId,
-            syncType,
-            status: 'pending',
-            startedAt: new Date()
-        });
-
-        return this.syncProgressRepository.save(progress);
-    }
-
-    async updateSyncProgress(
-        progressId: number,
-        updates: Partial<{
-            numProcessed: number;
-            numTotal: number;
-            batchesCompleted: number;
-            batchesTotal: number;
-            status: 'pending' | 'in_progress' | 'completed' | 'failed';
-            nextPageToken: string | null;
-        }>
-    ): Promise<void> {
-        await this.syncProgressRepository.update(progressId, {
-            ...updates,
-            updatedAt: new Date()
-        });
-    }
-
-    async markSyncProgressFailed(progressId: number, errorMessage: string): Promise<void> {
-        await this.syncProgressRepository.update(progressId, {
-            status: 'failed',
-            errorMessage,
-            completedAt: new Date()
-        });
-    }
-
-    async completeSyncProgress(progressId: number): Promise<void> {
-        await this.syncProgressRepository.update(progressId, {
-            status: 'completed',
-            completedAt: new Date()
-        });
-    }
-
-    async getSyncProgress(userId: number, syncType?: string): Promise<SyncProgressEntity | null> {
-        const where: any = { userId };
-        if (syncType) where.syncType = syncType;
-
-        return this.syncProgressRepository.findOne({
-            where,
-            order: { createdAt: 'DESC' }
-        });
-    }
-
-    async getActiveSyncProgress(userId: number): Promise<SyncProgressEntity[]> {
-        return this.syncProgressRepository.find({
-            where: {
-                userId,
-                status: In(['pending', 'in_progress'])
-            },
-            order: { createdAt: 'DESC' }
-        });
-    }
-}
-```
 
 #### **SyncStateService**
 ```typescript
@@ -1005,102 +601,65 @@ export class SyncStateService {
 }
 ```
 
-#### **MessageBatch Processor**
-```typescript
-// workers/sync/MessageBatchProcessor.ts
-export const messageBatchProcessor = async (job: Job<MessageBatchPayload>) => {
-  const { userId, messageEntityIds, batchNumber, totalBatches, syncProgressId, syncType } = job.data;
-
-  try {
-    // Get message entities from database
-    const messageEntities = await messageRepository.findBy({
-      id: In(messageEntityIds),
-      userId
-    });
-
-    const processedMessages = [];
-
-    for (const entity of messageEntities) {
-      // Fetch details from Gmail API
-      const { data: gmailMessage } = await gmailService.fetchMessage(entity.messageId);
-
-      // Process and update the entity with full details
-      const processed = await messageProcessor.processMessage(gmailMessage, entity);
-
-      // Mark as processed
-      await messageRepository.update(entity.id, {
-        detailsFetched: true,
-        updatedAt: new Date()
-      });
-
-      processedMessages.push(processed);
-    }
-
-    // Update sync progress if this is part of initial sync
-    if (syncProgressId && totalBatches) {
-      await updateSyncProgress(syncProgressId, {
-        batchesCompleted: batchNumber,
-        batchesTotal: totalBatches,
-        numProcessed: batchNumber * messageEntities.length
-      });
-
-      // Mark initial sync as completed if this is the final batch
-      if (batchNumber === totalBatches && syncType === 'initial') {
-        await updateUserSyncState(userId, {
-          initialSyncCompleted: true,
-          lastFullSyncAt: new Date()
-        });
-        await completeSyncProgress(syncProgressId);
-      }
-    }
-
-    return {
-      messagesProcessed: processedMessages.length,
-      batchNumber,
-      totalBatches,
-      syncType,
-      userId
-    };
-
-  } catch (error) {
-    if (syncProgressId) {
-      await markSyncProgressFailed(syncProgressId, `Batch ${batchNumber} failed: ${error.message}`);
-    }
-    throw error;
-  }
-};
-```
+**Message Batch Processing (Self-Managing):**
+- Dynamically query unprocessed messages (`internalDate: null`) by userId
+- Process messages through Gmail API using existing `fetchMessage()`
+- Update entities with full message data and set `internalDate`
+- Automatically schedule next batch if more messages remain
+- Resilient to failures - retries pick up where they left off
 
 ### **Implementation Strategy**
 
-#### **Phase 1: Foundation**
-1. **Database Migration**: Add `LabelEntity` extending `AppEntity` with proper constraints
-2. **User Entity Update**: Add sync state tracking fields (`historyId`, sync completion flags, timestamps)
-3. **Repository Setup**: Create `LabelRepository` with user-scoped queries
-4. **Service Extension**: Add label and history methods to `GmailService` with caching
+#### **Phase 1: Database & Repository Foundation**
+1. **LabelEntity**: Create new `LabelEntity` extending `AppEntity` with proper constraints
+2. **UserEntity Updates**: Add sync state tracking fields (`historyId`, sync completion flags, timestamps)
+3. **EmailMessageEntity Updates**: Add `internalDate` field (nullable) for tracking processed messages
+4. **SyncProgressEntity Updates**: Enhance with new fields (`syncType`, `status`, `batchesTotal`, etc.)
+5. **Repository Setup**: Create `LabelRepository` and ensure `EmailMessageRepository` supports new queries
+6. **Database Indexes**: Add indexes for efficient querying (`userId + internalDate`, `userId + messageId`, etc.)
+7. **Migration Scripts**: Create database migrations for all entity changes
 
-#### **Phase 2: Core Processors**
-1. **Label Sync**: Implement `labelSyncProcessor` with upsert logic and cleanup
-2. **Initial Sync**: Create two-phase `initialSyncProcessor` (ID collection → batch processing)
-3. **Message Batch**: Implement `messageBatchProcessor` with progress tracking
-4. **Sync State**: Build `SyncStateService` for dependency management
+#### **Phase 2: Service Layer**
+1. **Service Extensions**: `batchFetchMessages()` already added to `GmailService` ✅
+2. **SyncStateService**: Build service for user sync state management ✅
+   - Methods: `updateUserSyncState()`, `canPerformIncrementalSync()`, `getUserSyncState()`, `resetUserSyncState()`
+   - Uses: `UsersRepository`, proper logging, follows existing service patterns
+   - Focus: Single-user operations (works with current authenticated user)
+3. **SyncProgressRepository Enhancement**: Add sync progress tracking methods
+   - Methods: `createSyncProgress()`, `updateProgress()`, `markCompleted()`, `markFailed()`, `findActiveByUser()`
+   - Handles different sync types (`initial`, `incremental`, `labels`)
+   - No separate service needed - these are pure CRUD operations
+4. **MessageProcessingService**: Build service for Gmail data processing business logic
+   - Methods: `processGmailMessage()` (complex parsing/transformation)
+   - Uses: `EmailMessagesRepository`, handles conversion from Gmail API format to entity
+5. **EmailMessagesRepository Enhancement**: Add message update methods
+   - Methods: `updateMessageEntity()`, `updateWithGmailData()`
+   - Handles direct entity updates without business logic
+6. **Repository Registration**: Ensure `LabelsRepository` is registered in DI container
 
-#### **Phase 3: Incremental Sync**
-1. **History Processing**: Add `incrementalSyncProcessor` with history API
-2. **Change Detection**: Implement history change parsing and message diff logic
-3. **Fallback Logic**: Handle expired history IDs gracefully
-4. **Dependency Checks**: Ensure initial sync completion before incremental
+#### **Phase 3: Queue Processors Implementation**
+1. **Queue Types**: Add schemas to `src/queues/types.ts` ✅
+2. **Label Sync Processor**: Implement in `queueDefinitions.ts` (uses GmailService + LabelRepository)
+3. **Message Batch Processor**: Implement with repository and service dependencies
+4. **Initial Sync Processor**: Implement orchestrating label sync and message batch jobs
+5. **Incremental Sync Processor**: Implement using history API and message batch jobs
 
-#### **Phase 4: Integration & Scheduling**
-1. **CLI Migration**: Replace direct sync calls with job scheduling
-2. **Automated Scheduling**: Add cron jobs for regular incremental syncs
-3. **Progress Monitoring**: Integrate BullBoard for real-time job tracking
-4. **Error Recovery**: Implement comprehensive error handling and retry logic
+#### **Phase 4: Code Generation & Producers**
+1. **Code Generation**: Run `bun run src/cli/bullmq-codegen.ts` to generate producers/workers
+2. **Producer Functions**: Generated functions like `enqueueInitialSync`, `enqueueMessageBatch`, etc.
+3. **Type Validation**: Ensure all schemas work correctly with existing BullMQ system
+4. **Integration Testing**: Test that producers can enqueue jobs and processors can handle them
 
-#### **Phase 5: Performance & Reliability**
+#### **Phase 5: CLI Integration**
+1. **Producer Integration**: Replace direct service calls with generated producer functions
+2. **CLI Migration**: Update sync commands to use `enqueueInitialSync()` instead of direct calls
+3. **Error Recovery**: Implement comprehensive error handling and retry logic
+4. **Job Scheduling**: Wire up initial sync triggers and incremental sync scheduling
+
+#### **Phase 6: Performance & Reliability**
 1. **Rate Limit Tuning**: Optimize queue configurations for Gmail quotas
 2. **Large Mailbox Support**: Fine-tune batch sizes for 500k+ message accounts
-3. **Monitoring & Alerts**: Add logging, metrics, and failure notifications
-4. **Advanced Features**: Consider push notifications and webhook integration
+3. **Automated Scheduling**: Add cron jobs for regular incremental syncs
+4. **Monitoring & Alerts**: Add logging, metrics, and failure notifications
 
 This architecture transforms the sync system from a simple, blocking operation into a robust, scalable, and efficient background processing system that follows Gmail API best practices while providing comprehensive data import including labels.

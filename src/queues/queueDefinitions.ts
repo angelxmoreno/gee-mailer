@@ -2,6 +2,8 @@ import { createQueueConfig } from '@app/modules/bullmq/types';
 import type { Job } from 'bullmq';
 import { z } from 'zod';
 
+// Import project-specific types
+
 // Worker schemas
 const EmailSendSchema = z.object({
     to: z.email({ message: 'Invalid email address' }),
