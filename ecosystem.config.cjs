@@ -29,7 +29,7 @@ module.exports = {
             script: 'src/workers.ts',
             interpreter: 'bun',
             // WORKER_INSTANCES should be tuned for workload, not just queue count
-            instances: process.env.WORKER_INSTANCES || 2,
+            instances: process.env.WORKER_INSTANCES || 4,
             exec_mode: 'cluster',
             env: {
                 NODE_ENV: 'development',

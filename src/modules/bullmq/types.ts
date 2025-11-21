@@ -8,7 +8,7 @@ export type CustomWorkerOptions = Omit<WorkerOptions, 'connection'>;
 
 export type WorkerDefinition = {
     // biome-ignore lint/suspicious/noExplicitAny: we need "any" to avoid typing madness
-    processor: (job: Job<any>) => Promise<void>;
+    processor: (job: Job<any>) => Promise<unknown>;
     options?: CustomWorkerOptions;
     // biome-ignore lint/suspicious/noExplicitAny: we need "any" to avoid typing madness
     schema?: ZodType<any>; // Optional schema for payload validation in producers

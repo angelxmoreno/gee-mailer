@@ -124,7 +124,7 @@ export class GmailService {
         const result = await gmail.users.messages.get({
             userId: 'me',
             id: messageId,
-            format: 'full',
+            format: 'metadata',
         });
 
         // Cache for 30 minutes (messages don't change often)

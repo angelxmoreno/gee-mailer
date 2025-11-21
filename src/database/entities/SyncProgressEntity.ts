@@ -2,9 +2,9 @@ import { AppEntity } from '@app/modules/typeorm/AppEntity.ts';
 import { Column, Entity, Index } from 'typeorm';
 
 @Entity()
+@Index(['userId', 'syncType'], { unique: true })
 export class SyncProgressEntity extends AppEntity {
     @Column({ type: 'int' })
-    @Index({ unique: true })
     userId: number;
 
     @Column({ type: 'varchar', length: 64, nullable: true, default: null })

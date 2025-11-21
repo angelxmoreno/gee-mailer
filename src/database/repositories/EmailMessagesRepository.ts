@@ -4,7 +4,7 @@ import type { MessageData, MessageListResponse } from '@app/services/GmailServic
 import { filterNullish } from '@app/utils/filterNullish';
 import type { gmail_v1 } from 'googleapis';
 import { inject, singleton } from 'tsyringe';
-import { DataSource, type EntityManager, type ObjectLiteral } from 'typeorm';
+import { DataSource, type EntityManager, In, type ObjectLiteral } from 'typeorm';
 
 export interface DetailedMessageData {
     entity: Partial<EmailMessageEntity>;
@@ -107,7 +107,27 @@ export class EmailMessagesRepository extends BaseRepositoryService<EmailMessageE
      * 3. Bulk save simple message entities
      */
     async saveMessages(entities: Array<Partial<EmailMessageEntity>>): Promise<EmailMessageEntity[]> {
-        return this.saveMany(entities);
+        if (!entities.length) {
+            return [];
+        }
+
+        // Use upsert to handle duplicates
+        await this.repository.upsert(entities as Parameters<typeof this.repository.upsert>[0], ['userId', 'messageId']);
+
+        // Return the saved entities
+        const messageIds = entities.map((e) => e.messageId).filter(Boolean) as string[];
+        const userId = entities[0]?.userId;
+
+        if (!userId) {
+            return [];
+        }
+
+        return this.repository.find({
+            where: {
+                userId,
+                messageId: messageIds.length === 1 ? messageIds[0] : In(messageIds),
+            },
+        });
     }
 
     /**
