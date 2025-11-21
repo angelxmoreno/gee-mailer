@@ -249,6 +249,69 @@ Complete examples are available in `src/modules/bullmq/sample/` showing the expe
 
 ## Architecture
 
+### Current Implementation and Future Improvements
+
+**Current Architecture (Phase 1):**
+The current implementation allows multiple workers per queue, which creates job competition issues:
+- Multiple workers listen to the same queue (e.g., 3 workers on `gmailSync` queue)
+- Any worker can pick up any job from that queue, regardless of job name
+- This requires job name filtering in processors to ensure correct job routing
+- Example: `initialSyncWorker`, `incrementalSyncWorker`, and `messageBatchWorker` all compete for jobs on the `gmailSync` queue
+
+**Known Issues:**
+- **Job Competition**: Workers grab jobs they may not process (inefficient)
+- **Concurrency Confusion**: Worker-specific concurrency settings become unclear when workers share queues
+- **Resource Waste**: Workers process jobs just to check if they should handle them
+
+**Recommended Future Architecture (Phase 2):**
+Implement a **1:1 Queue-to-Worker** architecture:
+```typescript
+// Instead of shared queues:
+queues: {
+  gmailSync: {
+    workers: {
+      initialSync: { ... },      // Competes with others
+      incrementalSync: { ... },  // Competes with others
+      messageBatch: { ... }      // Competes with others
+    }
+  }
+}
+
+// Move to dedicated queues:
+queues: {
+  gmailInitialSync: {
+    workers: {
+      initialSync: { ... }       // Dedicated queue, no competition
+    }
+  },
+  gmailIncrementalSync: {
+    workers: {
+      incrementalSync: { ... }   // Dedicated queue, no competition
+    }
+  },
+  gmailMessageBatch: {
+    workers: {
+      messageBatch: { ... }      // Dedicated queue, no competition
+    }
+  }
+}
+```
+
+**Benefits of 1:1 Architecture:**
+- **Efficient Job Processing**: No wasted cycles on job name filtering
+- **Clear Concurrency Control**: Each worker's concurrency settings apply directly
+- **Better Resource Utilization**: Workers only process jobs they're designed for
+- **Simpler Monitoring**: Queue metrics directly correlate to worker performance
+- **Cleaner Architecture**: More predictable job routing and scaling
+
+**Migration Strategy:**
+1. Update queue definitions to use dedicated queue names
+2. Regenerate producers and workers via codegen
+3. Update any direct queue references in application code
+4. Deploy workers before updating job producers to maintain processing during transition
+
+**Status**: Phase 2 implementation planned for future iteration. Current job name filtering approach is functional but not optimal for production scale.
+
 ### File Structure
 ```text
 src/modules/bullmq/

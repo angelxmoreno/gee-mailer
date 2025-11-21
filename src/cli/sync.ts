@@ -1,8 +1,9 @@
 import 'reflect-metadata';
 import { appContainer } from '@app/config.ts';
 import { closeDatabase, initializeDatabase } from '@app/modules/typeorm/createDataSourceOptions.ts';
+import { enqueueIncrementalSync, enqueueInitialSync, enqueueLabelSync } from '@app/queues/generated/producers';
 import { CurrentUserService } from '@app/services/CurrentUserService.ts';
-import { MailSyncService } from '@app/services/MailSyncService.ts';
+import { SyncStateService } from '@app/services/SyncStateService.ts';
 import { AppLogger } from '@app/utils/tokens';
 import { DataSource } from 'typeorm';
 
@@ -13,6 +14,7 @@ const main = async () => {
 
     try {
         const currentUserService = appContainer.resolve(CurrentUserService);
+        const syncStateService = appContainer.resolve(SyncStateService);
         const currentUser = await currentUserService.getCurrentUser();
 
         if (!currentUser) {
@@ -21,13 +23,34 @@ const main = async () => {
             process.exit(1);
         }
 
-        logger.debug(`🔄 Starting sync for ${currentUser.name} (${currentUser.email})`);
-        logger.debug('📧 Fetching Gmail data...\n');
+        logger.info(`🔄 Starting sync for ${currentUser.name} (${currentUser.email})`);
 
-        const syncService = appContainer.resolve(MailSyncService);
-        await syncService.sync();
+        // Get current sync state to determine what sync operations are needed
+        const syncState = await syncStateService.getUserSyncState(currentUser.id);
 
-        logger.debug('\n✅ Sync completed successfully!');
+        logger.info('📊 Checking sync requirements...');
+
+        // Enqueue label sync if needed
+        if (syncState.needsLabelSync) {
+            logger.info('📋 Enqueueing label sync...');
+            await enqueueLabelSync({ userId: currentUser.id });
+        }
+
+        // Enqueue appropriate sync type based on user state
+        if (syncState.needsInitialSync) {
+            logger.info('🚀 Enqueueing initial sync (this may take a while)...');
+            await enqueueInitialSync({ userId: currentUser.id });
+        } else if (syncState.canIncrementalSync) {
+            logger.info('⚡ Enqueueing incremental sync...');
+            await enqueueIncrementalSync({ userId: currentUser.id });
+        } else {
+            logger.warn('⚠️ Cannot perform sync - initial setup incomplete');
+            logger.debug('💡 User may need to complete initial sync first');
+        }
+
+        logger.info('✅ Sync jobs enqueued successfully!');
+        logger.info('⏳ Jobs are now processing in the background via workers');
+        logger.debug('💡 Use `bun run workers:start` to ensure workers are running');
     } catch (error) {
         if (error instanceof Error) {
             if (error.message === 'No current user') {

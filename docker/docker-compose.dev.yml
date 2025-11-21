@@ -74,15 +74,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       BULL_VERSION: BULLMQ
-      BULL_PREFIX: bull
+      # Remove BULL_PREFIX to use default (auto-discovery)
     depends_on:
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # Remove curl-based healthcheck since curl is not available in container
     restart: unless-stopped
 
 volumes:
