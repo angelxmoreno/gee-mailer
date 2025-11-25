@@ -4,7 +4,7 @@ import type { MessageBatchPayload } from '@app/queues/types.ts';
 import { GmailService } from '@app/services/GmailService.ts';
 import { MessageProcessingService } from '@app/services/MessageProcessingService.ts';
 import { inject, singleton } from 'tsyringe';
-import { type FindOptionsWhere, IsNull, MoreThanOrEqual } from 'typeorm';
+import { type FindOptionsWhere, IsNull } from 'typeorm';
 
 @singleton()
 export class MessageBatchProcessor {
@@ -26,7 +26,7 @@ export class MessageBatchProcessor {
         const { userId, batchSize, syncType, syncProgressId, lastIncrementalSyncAt } = jobData;
 
         // Different query strategies based on sync type
-        let whereClause: FindOptionsWhere<EmailMessageEntity> = { userId, internalDate: IsNull() };
+        const whereClause: FindOptionsWhere<EmailMessageEntity> = { userId, internalDate: IsNull() };
         let orderClause: Record<string, string> = {};
 
         if (syncType === 'initial') {
@@ -35,15 +35,7 @@ export class MessageBatchProcessor {
         } else if (syncType === 'incremental') {
             // Incremental sync: prioritize recent messages, newest first for faster user feedback
             orderClause = { createdAt: 'DESC' };
-
-            // Optionally filter to messages added since last incremental sync
-            if (lastIncrementalSyncAt) {
-                whereClause = {
-                    userId,
-                    internalDate: IsNull(),
-                    createdAt: MoreThanOrEqual(lastIncrementalSyncAt),
-                };
-            }
+            // No createdAt filter - process all unprocessed messages by internalDate only
         }
 
         const unprocessedMessages = await this.messageRepository.repository.find({

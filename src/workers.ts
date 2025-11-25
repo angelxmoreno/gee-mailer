@@ -91,11 +91,21 @@ class WorkerManager {
                 });
 
                 worker.on('failed', (job, error) => {
+                    // Log only safe identifiers and summaries to avoid PII leakage
+                    const safeJobData = job?.data
+                        ? {
+                              userId: job.data.userId || 'unknown',
+                              syncType: job.data.syncType || 'unknown',
+                              batchSize: job.data.batchSize || 0,
+                              hasPayload: !!job.data,
+                          }
+                        : undefined;
+
                     this.logger.error(
                         {
                             jobId: job?.id,
                             jobName: job?.name,
-                            jobData: job?.data,
+                            jobData: safeJobData,
                             error: {
                                 name: error.name,
                                 message: error.message,
@@ -110,11 +120,21 @@ class WorkerManager {
                 });
 
                 worker.on('completed', (job, result) => {
+                    // Log only safe summary data to avoid PII and bloat
+                    const safeResult = result
+                        ? {
+                              userId: result.userId || 'unknown',
+                              action: result.action || 'unknown',
+                              messageCount: result.totalMessages || result.newMessages || result.messagesProcessed || 0,
+                              hasResult: !!result,
+                          }
+                        : undefined;
+
                     this.logger.debug(
                         {
                             jobId: job.id,
                             jobName: job.name,
-                            result,
+                            result: safeResult,
                             workerName: worker.name,
                             duration: job.processedOn ? Date.now() - job.processedOn : 0,
                         },

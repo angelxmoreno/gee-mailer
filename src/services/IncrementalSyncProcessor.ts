@@ -35,24 +35,32 @@ export class IncrementalSyncProcessor {
                 throw new Error('User cannot perform incremental sync - missing historyId or incomplete initial sync');
             }
 
-            // Fetch message list from Gmail using history API
-            const messageList = await this.gmailService.fetchMessageList(syncState.user.historyId);
+            // Fetch history changes from Gmail using history API
+            const historyResponse = await this.gmailService.fetchHistory(syncState.user.historyId);
 
-            // Save new message entities
+            // Extract messages from history changes
             const messageEntities: Array<Partial<EmailMessageEntity>> = [];
-            for (const message of messageList.data.messages || []) {
-                if (message.id) {
-                    messageEntities.push({
-                        userId,
-                        messageId: message.id,
-                        threadId: message.threadId,
-                    });
+            for (const historyItem of historyResponse.data) {
+                // Process messagesAdded from history
+                if (historyItem.messagesAdded) {
+                    for (const addedItem of historyItem.messagesAdded) {
+                        if (addedItem.message?.id) {
+                            messageEntities.push({
+                                userId,
+                                messageId: addedItem.message.id,
+                                threadId: addedItem.message.threadId,
+                            });
+                        }
+                    }
                 }
             }
 
             if (messageEntities.length > 0) {
                 await this.emailMessagesRepo.saveMessages(messageEntities);
             }
+
+            // Get the latest historyId for updating user state
+            const latestHistoryId = await this.gmailService.getCurrentHistoryId();
 
             // Start message batch processing for new messages
             if (messageEntities.length > 0) {
@@ -61,7 +69,7 @@ export class IncrementalSyncProcessor {
                     batchSize: 25, // Smaller batch size for incremental
                     syncType: 'incremental',
                     syncProgressId: syncProgress.id,
-                    lastIncrementalSyncAt: new Date(),
+                    lastIncrementalSyncAt: syncState.user.lastIncrementalSyncAt || undefined,
                 });
             }
 
@@ -71,8 +79,9 @@ export class IncrementalSyncProcessor {
                 status: messageEntities.length > 0 ? 'in_progress' : 'completed',
             });
 
-            // Update user's last incremental sync time
+            // Update user's historyId and last incremental sync time only after successful processing
             await this.syncStateService.updateUserSyncState(userId, {
+                historyId: latestHistoryId,
                 lastIncrementalSyncAt: new Date(),
             });
 

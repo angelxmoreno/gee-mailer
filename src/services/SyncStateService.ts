@@ -20,11 +20,11 @@ export class SyncStateService {
     async updateUserSyncState(
         userId: number,
         updates: Partial<{
-            historyId: string;
+            historyId: string | null;
             initialSyncCompleted: boolean;
             labelSyncCompleted: boolean;
-            lastFullSyncAt: Date;
-            lastIncrementalSyncAt: Date;
+            lastFullSyncAt: Date | null;
+            lastIncrementalSyncAt: Date | null;
         }>
     ): Promise<void> {
         const user = await this.usersRepo.findByIdOrFail(userId);
@@ -80,17 +80,17 @@ export class SyncStateService {
     async resetUserSyncState(userId: number, resetType: 'full' | 'incremental' = 'full'): Promise<void> {
         if (resetType === 'full') {
             await this.updateUserSyncState(userId, {
-                historyId: undefined,
+                historyId: null,
                 initialSyncCompleted: false,
                 labelSyncCompleted: false,
-                lastFullSyncAt: undefined,
-                lastIncrementalSyncAt: undefined,
+                lastFullSyncAt: null,
+                lastIncrementalSyncAt: null,
             });
             this.logger.info({ userId }, 'Full sync state reset completed');
         } else {
             await this.updateUserSyncState(userId, {
-                historyId: undefined,
-                lastIncrementalSyncAt: undefined,
+                historyId: null,
+                lastIncrementalSyncAt: null,
             });
             this.logger.info({ userId }, 'Incremental sync state reset completed');
         }
