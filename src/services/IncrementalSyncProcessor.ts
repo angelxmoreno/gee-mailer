@@ -59,8 +59,8 @@ export class IncrementalSyncProcessor {
                 await this.emailMessagesRepo.saveMessages(messageEntities);
             }
 
-            // Get the latest historyId for updating user state
-            const latestHistoryId = await this.gmailService.getCurrentHistoryId();
+            // Use historyId from the response, or fall back to getCurrentHistoryId if not available
+            const latestHistoryId = historyResponse.historyId || (await this.gmailService.getCurrentHistoryId());
 
             // Start message batch processing for new messages
             if (messageEntities.length > 0) {

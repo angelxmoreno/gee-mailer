@@ -241,15 +241,23 @@ export class GmailService {
     /**
      * Fetch history changes with caching
      */
-    async fetchHistory(startHistoryId: string): Promise<{ data: gmail_v1.Schema$History[] }> {
+    async fetchHistory(startHistoryId: string): Promise<{
+        data: gmail_v1.Schema$History[];
+        historyId?: string;
+    }> {
         const gmail = await this.createGmailClient();
         const currentUser = await this.currentUserService.getCurrentUserOrFail();
         const cacheKey = cacheKeyGenerator(['fetchHistory', currentUser.id, startHistoryId]);
-        const cache = (await this.cache.get(cacheKey)) as gmail_v1.Schema$History[] | undefined;
+        const cache = (await this.cache.get(cacheKey)) as
+            | {
+                  history: gmail_v1.Schema$History[];
+                  historyId?: string;
+              }
+            | undefined;
 
         if (cache) {
             this.logger.debug({ userId: currentUser.id, startHistoryId }, 'History fetched from cache');
-            return { data: cache };
+            return { data: cache.history, historyId: cache.historyId };
         }
 
         this.logger.debug({ userId: currentUser.id, startHistoryId }, 'Fetching Gmail history');
@@ -259,13 +267,14 @@ export class GmailService {
             historyTypes: ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'],
         });
         const history = response.data.history || [];
+        const historyId = response.data.historyId || undefined;
 
         // Cache for 5 minutes (history is time-sensitive)
-        await this.cache.set(cacheKey, history, 60 * 5 * 1000, [
+        await this.cache.set(cacheKey, { history, historyId }, 60 * 5 * 1000, [
             `user:${currentUser.id}`,
             `user:${currentUser.id}:history`,
         ]);
-        return { data: history };
+        return { data: history, historyId };
     }
 
     /**
