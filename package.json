@@ -54,6 +54,7 @@
         "migration:revert": "bun --bun typeorm migration:revert -d src/database/dataSource.ts"
     },
     "dependencies": {
+        "@angelxmoreno/coderabbit-github-parser": "^1.0.2",
         "@keyvhq/core": "^2.1.11",
         "@keyvhq/redis": "^2.1.11",
         "@keyvhq/sqlite": "^2.1.11",
