@@ -24,7 +24,6 @@ export class NewSync1763659085330 implements MigrationInterface {
                 "messages_unread" integer NOT NULL DEFAULT '0',
                 "threads_total" integer NOT NULL DEFAULT '0',
                 "threads_unread" integer NOT NULL DEFAULT '0',
-                CONSTRAINT "labels_label_id_unique" UNIQUE ("label_id"),
                 CONSTRAINT "labels_id_pk" PRIMARY KEY ("id")
             )
         `);

@@ -6,7 +6,7 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, type Relation } from 'typ
 // Unique constraint for labelId + userId combination
 @Index(['labelId', 'userId'], { unique: true })
 export class LabelEntity extends AppEntity {
-    @Column({ unique: true })
+    @Column()
     labelId: string; // Gmail label ID
 
     @Column()

@@ -23,34 +23,44 @@ const main = async () => {
             process.exit(1);
         }
 
-        logger.info(`🔄 Starting sync for ${currentUser.name} (${currentUser.email})`);
+        const maskedEmail = currentUser.email.replace(/(.{1,3})[^@]*@/, '$1***@');
+        logger.info(`🔄 Starting sync for user ${currentUser.id} (${maskedEmail})`);
 
         // Get current sync state to determine what sync operations are needed
         const syncState = await syncStateService.getUserSyncState(currentUser.id);
 
         logger.info('📊 Checking sync requirements...');
 
+        let jobsEnqueued = false;
+
         // Enqueue label sync if needed
         if (syncState.needsLabelSync) {
             logger.info('📋 Enqueueing label sync...');
             await enqueueLabelSync({ userId: currentUser.id });
+            jobsEnqueued = true;
         }
 
         // Enqueue appropriate sync type based on user state
         if (syncState.needsInitialSync) {
             logger.info('🚀 Enqueueing initial sync (this may take a while)...');
             await enqueueInitialSync({ userId: currentUser.id });
+            jobsEnqueued = true;
         } else if (syncState.canIncrementalSync) {
             logger.info('⚡ Enqueueing incremental sync...');
             await enqueueIncrementalSync({ userId: currentUser.id });
+            jobsEnqueued = true;
         } else {
             logger.warn('⚠️ Cannot perform sync - initial setup incomplete');
             logger.debug('💡 User may need to complete initial sync first');
         }
 
-        logger.info('✅ Sync jobs enqueued successfully!');
-        logger.info('⏳ Jobs are now processing in the background via workers');
-        logger.debug('💡 Use `bun run workers:start` to ensure workers are running');
+        if (jobsEnqueued) {
+            logger.info('✅ Sync jobs enqueued successfully!');
+            logger.info('⏳ Jobs are now processing in the background via workers');
+            logger.debug('💡 Use `bun run workers:start` to ensure workers are running');
+        } else {
+            logger.warn('⚠️ No sync jobs were enqueued');
+        }
     } catch (error) {
         if (error instanceof Error) {
             if (error.message === 'No current user') {

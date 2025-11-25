@@ -14,7 +14,7 @@ export const MessageBatchSchema = UserIdentifier.extend({
     batchSize: z.number().default(50),
     syncProgressId: z.number().optional(),
     syncType: z.enum(['initial', 'incremental']),
-    lastIncrementalSyncAt: z.date().optional(), // For incremental sync filtering
+    lastIncrementalSyncAt: z.coerce.date().optional(), // For incremental sync filtering
 });
 
 export const LabelSyncSchema = UserIdentifier;
