@@ -9,7 +9,7 @@ import { inject, singleton } from 'tsyringe';
 
 type Gmail = gmail_v1.Gmail;
 export type MessageListResponse = gmail_v1.Schema$ListMessagesResponse;
-export type MessageResponse = gmail_v1.Schema$Message;
+export type MessageData = gmail_v1.Schema$Message;
 export type ProfileResponse = gmail_v1.Schema$Profile;
 
 @singleton()
@@ -108,11 +108,11 @@ export class GmailService {
     /**
      * Fetch detailed message by ID
      */
-    async fetchMessage(messageId: string): Promise<{ data: MessageResponse }> {
+    async fetchMessage(messageId: string): Promise<{ data: MessageData }> {
         const gmail = await this.createGmailClient();
         const currentUser = await this.currentUserService.getCurrentUserOrFail();
         const cacheKey = cacheKeyGenerator(['fetchMessage', currentUser.id, messageId]);
-        const cache = (await this.cache.get(cacheKey)) as MessageResponse | undefined;
+        const cache = (await this.cache.get(cacheKey)) as MessageData | undefined;
 
         if (cache) {
             this.logger.debug({ userId: currentUser.id, messageId }, 'Message details fetched from cache');
@@ -124,7 +124,7 @@ export class GmailService {
         const result = await gmail.users.messages.get({
             userId: 'me',
             id: messageId,
-            format: 'full',
+            format: 'metadata',
         });
 
         // Cache for 30 minutes (messages don't change often)
@@ -230,8 +230,8 @@ export class GmailService {
         const response = await gmail.users.labels.list({ userId: 'me' });
         const labels = response.data.labels || [];
 
-        // Cache for 10 minutes (labels don't change frequently)
-        await this.cache.set(cacheKey, labels, 60 * 10 * 1000, [
+        // Cache for 5 minutes (labels don't change frequently)
+        await this.cache.set(cacheKey, labels, 60 * 5 * 1000, [
             `user:${currentUser.id}`,
             `user:${currentUser.id}:labels`,
         ]);
@@ -241,15 +241,23 @@ export class GmailService {
     /**
      * Fetch history changes with caching
      */
-    async fetchHistory(startHistoryId: string): Promise<{ data: gmail_v1.Schema$History[] }> {
+    async fetchHistory(startHistoryId: string): Promise<{
+        data: gmail_v1.Schema$History[];
+        historyId?: string;
+    }> {
         const gmail = await this.createGmailClient();
         const currentUser = await this.currentUserService.getCurrentUserOrFail();
         const cacheKey = cacheKeyGenerator(['fetchHistory', currentUser.id, startHistoryId]);
-        const cache = (await this.cache.get(cacheKey)) as gmail_v1.Schema$History[] | undefined;
+        const cache = (await this.cache.get(cacheKey)) as
+            | {
+                  history: gmail_v1.Schema$History[];
+                  historyId?: string;
+              }
+            | undefined;
 
         if (cache) {
             this.logger.debug({ userId: currentUser.id, startHistoryId }, 'History fetched from cache');
-            return { data: cache };
+            return { data: cache.history, historyId: cache.historyId };
         }
 
         this.logger.debug({ userId: currentUser.id, startHistoryId }, 'Fetching Gmail history');
@@ -259,13 +267,14 @@ export class GmailService {
             historyTypes: ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'],
         });
         const history = response.data.history || [];
+        const historyId = response.data.historyId || undefined;
 
         // Cache for 5 minutes (history is time-sensitive)
-        await this.cache.set(cacheKey, history, 60 * 5 * 1000, [
+        await this.cache.set(cacheKey, { history, historyId }, 60 * 5 * 1000, [
             `user:${currentUser.id}`,
             `user:${currentUser.id}:history`,
         ]);
-        return { data: history };
+        return { data: history, historyId };
     }
 
     /**
@@ -286,5 +295,29 @@ export class GmailService {
         const targetUserId = userId || (await this.currentUserService.getCurrentUserOrFail()).id;
         await this.cache.invalidateTag(`user:${targetUserId}:labels`);
         this.logger.debug({ userId: targetUserId }, 'Labels cache cleared');
+    }
+
+    /**
+     * Batch fetch message details by IDs
+     */
+    async batchFetchMessages(messageIds: string[]): Promise<{ data: MessageData[] }> {
+        const messages: MessageData[] = [];
+
+        // Process in batches to avoid overwhelming the API
+        const batchSize = 10;
+        for (let i = 0; i < messageIds.length; i += batchSize) {
+            const batch = messageIds.slice(i, i + batchSize);
+            const batchPromises = batch.map((messageId) => this.fetchMessage(messageId));
+
+            const batchResults = await Promise.all(batchPromises);
+            messages.push(...batchResults.map((result) => result.data));
+
+            // Add delay between batches to respect rate limits
+            if (i + batchSize < messageIds.length) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+        }
+
+        return { data: messages };
     }
 }

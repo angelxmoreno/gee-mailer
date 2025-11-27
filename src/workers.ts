@@ -27,6 +27,17 @@ class WorkerManager {
 
         this.logger.info('Starting BullMQ workers...');
 
+        // Log connection configuration for debugging
+        this.logger.info(
+            {
+                redisHost: process.env.REDIS_HOST ?? 'localhost',
+                redisPort: Number.parseInt(process.env.REDIS_PORT ?? '4379', 10),
+                redisDb: Number.parseInt(process.env.REDIS_DB ?? '0', 10),
+                hasPassword: !!process.env.REDIS_PASSWORD,
+            },
+            'Redis connection configuration'
+        );
+
         try {
             // Initialize all generated workers (auto-discovered)
             this.workers = allWorkers;
@@ -35,13 +46,100 @@ class WorkerManager {
             for (const worker of this.workers) {
                 this.logger.info({ workerName: worker.name }, 'Worker started');
 
-                // Add worker error handling
+                // Add detailed worker error handling
                 worker.on('error', (error: Error) => {
-                    this.logger.error({ error, workerName: worker.name }, 'Worker error');
+                    // Create a type-safe error object for logging
+                    const nodeError = error as Error & {
+                        code?: string;
+                        errno?: number;
+                        syscall?: string;
+                        address?: string;
+                        port?: number;
+                    };
+
+                    this.logger.error(
+                        {
+                            error: {
+                                name: error.name,
+                                message: error.message,
+                                stack: error.stack,
+                                cause: error.cause,
+                                code: nodeError.code,
+                                errno: nodeError.errno,
+                                syscall: nodeError.syscall,
+                                address: nodeError.address,
+                                port: nodeError.port,
+                            },
+                            workerName: worker.name,
+                            workerId: worker.id,
+                            isRunning: worker.isRunning(),
+                            isPaused: worker.isPaused(),
+                        },
+                        'Worker connection error - check Redis/database connectivity'
+                    );
                 });
 
                 worker.on('stalled', (jobId: string) => {
-                    this.logger.warn({ jobId, workerName: worker.name }, 'Job stalled');
+                    this.logger.warn(
+                        {
+                            jobId,
+                            workerName: worker.name,
+                            workerId: worker.id,
+                        },
+                        'Job stalled - may indicate worker performance issues'
+                    );
+                });
+
+                worker.on('failed', (job, error) => {
+                    // Log only safe identifiers and summaries to avoid PII leakage
+                    const safeJobData = job?.data
+                        ? {
+                              userId: job.data.userId || 'unknown',
+                              syncType: job.data.syncType || 'unknown',
+                              batchSize: job.data.batchSize || 0,
+                              hasPayload: !!job.data,
+                          }
+                        : undefined;
+
+                    this.logger.error(
+                        {
+                            jobId: job?.id,
+                            jobName: job?.name,
+                            jobData: safeJobData,
+                            error: {
+                                name: error.name,
+                                message: error.message,
+                                stack: error.stack,
+                            },
+                            workerName: worker.name,
+                            attempts: job?.attemptsMade,
+                            maxAttempts: job?.opts.attempts,
+                        },
+                        'Job failed - check job processor implementation'
+                    );
+                });
+
+                worker.on('completed', (job, result) => {
+                    // Log only safe summary data to avoid PII and bloat
+                    const safeResult = result
+                        ? {
+                              userId: result.userId || 'unknown',
+                              action: result.action || 'unknown',
+                              messageCount: result.totalMessages || result.newMessages || result.messagesProcessed || 0,
+                              hasResult: !!result,
+                          }
+                        : undefined;
+
+                    this.logger.debug(
+                        {
+                            jobId: job.id,
+                            jobName: job.name,
+                            result: safeResult,
+                            workerName: worker.name,
+                            duration: job.processedOn ? Date.now() - job.processedOn : 0,
+                        },
+                        'Job completed successfully'
+                    );
                 });
             }
 

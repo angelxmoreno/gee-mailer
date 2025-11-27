@@ -22,4 +22,19 @@ export class UserEntity extends AppEntity {
 
     @Column({ type: 'timestamp', nullable: true })
     tokenExpiryDate: Date | null;
+
+    @Column({ nullable: true })
+    historyId: string | null; // Store Gmail historyId for incremental sync
+
+    @Column({ default: false })
+    initialSyncCompleted: boolean; // Track initial sync completion state
+
+    @Column({ default: false })
+    labelSyncCompleted: boolean; // Track label sync completion
+
+    @Column({ nullable: true })
+    lastFullSyncAt: Date | null; // Track when last full sync occurred
+
+    @Column({ nullable: true })
+    lastIncrementalSyncAt: Date | null; // Track when last incremental sync occurred
 }

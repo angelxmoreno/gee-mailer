@@ -12,7 +12,7 @@ export class CurrentUserService {
     protected logger: Logger;
     protected userRepo: UsersRepository;
     protected cacheKey = 'current-user-id';
-    protected cacheTtlMs = 60 * 60 * 24 * 1000; // 1 day
+    protected cacheTtlMs = 60 * 60 * 24 * 7 * 1000; // 7 days
 
     constructor(
         @inject(AppLogger) logger: Logger,

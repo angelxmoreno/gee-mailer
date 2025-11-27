@@ -1,5 +1,22 @@
+import 'reflect-metadata';
+import { appContainer } from '@app/config.ts';
 import { createQueueConfig } from '@app/modules/bullmq/types';
+import {
+    type IncrementalSyncPayload,
+    IncrementalSyncSchema,
+    type InitialSyncPayload,
+    InitialSyncSchema,
+    type LabelSyncPayload,
+    LabelSyncSchema,
+    type MessageBatchPayload,
+    MessageBatchSchema,
+} from '@app/queues/types.ts';
+import { IncrementalSyncProcessor } from '@app/services/IncrementalSyncProcessor.ts';
+import { InitialSyncProcessor } from '@app/services/InitialSyncProcessor.ts';
+import { LabelsSyncProcessor } from '@app/services/LabelsSyncProcessor.ts';
+import { MessageBatchProcessor } from '@app/services/MessageBatchProcessor.ts';
 import type { Job } from 'bullmq';
+import { DataSource } from 'typeorm';
 import { z } from 'zod';
 
 // Worker schemas
@@ -59,6 +76,120 @@ const queueConfig = createQueueConfig({
                 },
             },
         },
+        gmailSync: {
+            options: {
+                defaultJobOptions: {
+                    removeOnComplete: 50,
+                    removeOnFail: 100,
+                    attempts: 5,
+                    backoff: { type: 'exponential', delay: 5000 },
+                },
+            },
+            workers: {
+                initialSync: {
+                    schema: InitialSyncSchema,
+                    processor: async (job: Job<InitialSyncPayload>) => {
+                        // Only process jobs with matching name
+                        if (job.name !== 'initialSync') {
+                            return;
+                        }
+
+                        // Ensure database is initialized
+                        const dataSource = appContainer.resolve(DataSource);
+                        const initialSyncProcessor = appContainer.resolve(InitialSyncProcessor);
+
+                        if (!dataSource.isInitialized) {
+                            await dataSource.initialize();
+                        }
+
+                        const { userId } = job.data;
+                        return initialSyncProcessor.process(userId, enqueueMessageBatch);
+                    },
+                    options: {
+                        concurrency: 1,
+                        limiter: { max: 3, duration: 60000 },
+                    },
+                },
+                incrementalSync: {
+                    schema: IncrementalSyncSchema,
+                    processor: async (job: Job<IncrementalSyncPayload>) => {
+                        // Only process jobs with matching name
+                        if (job.name !== 'incrementalSync') {
+                            return;
+                        }
+
+                        // Ensure database is initialized
+                        const dataSource = appContainer.resolve(DataSource);
+                        const incrementalSyncProcessor = appContainer.resolve(IncrementalSyncProcessor);
+
+                        if (!dataSource.isInitialized) {
+                            await dataSource.initialize();
+                        }
+
+                        const { userId } = job.data;
+                        return incrementalSyncProcessor.process(userId, enqueueMessageBatch);
+                    },
+                    options: {
+                        concurrency: 5,
+                        limiter: { max: 15, duration: 60000 },
+                    },
+                },
+                messageBatch: {
+                    schema: MessageBatchSchema,
+                    processor: async (job: Job<MessageBatchPayload>) => {
+                        // Only process jobs with matching name
+                        if (job.name !== 'messageBatch') {
+                            return;
+                        }
+
+                        // Ensure database is initialized
+                        const dataSource = appContainer.resolve(DataSource);
+                        const messageBatchProcessor = appContainer.resolve(MessageBatchProcessor);
+
+                        if (!dataSource.isInitialized) {
+                            await dataSource.initialize();
+                        }
+
+                        return messageBatchProcessor.process(job.data, enqueueMessageBatch);
+                    },
+                    options: {
+                        concurrency: 8,
+                        limiter: { max: 60, duration: 60000 },
+                    },
+                },
+            },
+        },
+
+        gmailLabels: {
+            options: {
+                defaultJobOptions: {
+                    removeOnComplete: 20,
+                    removeOnFail: 50,
+                    attempts: 3,
+                    backoff: { type: 'exponential', delay: 3000 },
+                },
+            },
+            workers: {
+                labelSync: {
+                    schema: LabelSyncSchema,
+                    processor: async (job: Job<LabelSyncPayload>) => {
+                        // Ensure database is initialized
+                        const dataSource = appContainer.resolve(DataSource);
+                        const labelsSyncProcessor = appContainer.resolve(LabelsSyncProcessor);
+
+                        if (!dataSource.isInitialized) {
+                            await dataSource.initialize();
+                        }
+                        const { userId } = job.data;
+                        return labelsSyncProcessor.process(userId);
+                    },
+                    options: {
+                        concurrency: 3,
+                        limiter: { max: 10, duration: 60000 },
+                    },
+                },
+            },
+        },
     },
     connection: {
         host: process.env.REDIS_HOST ?? 'localhost',
@@ -67,5 +198,21 @@ const queueConfig = createQueueConfig({
         db: Number.parseInt(process.env.REDIS_DB ?? '0', 10),
     },
 });
+
+// Helper function to enqueue message batch jobs
+// Note: This avoids circular imports by creating a local producer
+async function enqueueMessageBatch(payload: MessageBatchPayload): Promise<void> {
+    const { Queue } = await import('bullmq');
+    const messageBatchQueue = new Queue('gmailSync', {
+        ...queueConfig.queues.gmailSync.options,
+        connection: queueConfig.connection,
+    });
+
+    // Validate with schema
+    const validatedData = MessageBatchSchema.parse(payload);
+
+    // Add to queue with validated data
+    await messageBatchQueue.add('messageBatch', validatedData);
+}
 
 export default queueConfig;

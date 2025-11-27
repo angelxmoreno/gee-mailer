@@ -1,10 +1,12 @@
 import { AppEntity } from '@app/modules/typeorm/AppEntity.ts';
 import { Column, Entity, Index, OneToMany, type Relation } from 'typeorm';
 import { HeaderEntity } from './HeaderEntity';
+import { MessageLabelEntity } from './MessageLabelEntity';
 import { MessagePartEntity } from './MessagePartEntity';
 
 @Entity()
 @Index(['userId', 'messageId'], { unique: true })
+@Index(['userId', 'internalDate'], { unique: false })
 export class EmailMessageEntity extends AppEntity {
     @Column({ type: 'varchar', length: 64 })
     @Index({ unique: true })
@@ -65,4 +67,11 @@ export class EmailMessageEntity extends AppEntity {
         { cascade: true }
     )
     messageParts: Relation<MessagePartEntity[]>;
+
+    @OneToMany(
+        () => MessageLabelEntity,
+        (messageLabel) => messageLabel.message,
+        { cascade: true }
+    )
+    messageLabels: Relation<MessageLabelEntity[]>;
 }
