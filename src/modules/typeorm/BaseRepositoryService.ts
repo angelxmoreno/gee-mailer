@@ -59,11 +59,11 @@ export class BaseRepositoryService<T extends AppEntity> implements RepositorySer
     }
 
     async remove(id: number | string): Promise<void> {
-        await this.repo.delete(id);
+        await this.repo.softDelete(id);
     }
 
     async deleteMany(ids: (number | string)[]): Promise<void> {
-        await this.repo.delete(ids as string[] | number[]);
+        await this.repo.softDelete(ids as string[] | number[]);
     }
 
     async clearTable(): Promise<void> {

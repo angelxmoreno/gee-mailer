@@ -1,5 +1,5 @@
 import type { EmailMessageEntity } from '@app/database/entities';
-import { EmailMessagesRepository } from '@app/database/repositories';
+import { EmailMessagesRepository, MessageLabelRepository } from '@app/database/repositories';
 import { AppLogger } from '@app/utils/tokens';
 import type { gmail_v1 } from 'googleapis';
 import type { Logger } from 'pino';
@@ -11,13 +11,16 @@ type GmailMessage = gmail_v1.Schema$Message;
 export class MessageProcessingService {
     protected logger: Logger;
     protected emailMessagesRepo: EmailMessagesRepository;
+    protected messageLabelRepo: MessageLabelRepository;
 
     constructor(
         @inject(AppLogger) logger: Logger,
-        @inject(EmailMessagesRepository) emailMessagesRepo: EmailMessagesRepository
+        @inject(EmailMessagesRepository) emailMessagesRepo: EmailMessagesRepository,
+        @inject(MessageLabelRepository) messageLabelRepo: MessageLabelRepository
     ) {
         this.logger = logger;
         this.emailMessagesRepo = emailMessagesRepo;
+        this.messageLabelRepo = messageLabelRepo;
     }
 
     /**
@@ -44,12 +47,22 @@ export class MessageProcessingService {
             // Update entity with processed data
             const updatedEntity = await this.emailMessagesRepo.update(messageEntity, entityUpdates);
 
+            // Update label relationships if labelIds are present
+            if (processedData.labelIds && Array.isArray(processedData.labelIds)) {
+                await this.messageLabelRepo.replaceMessageLabels(
+                    messageEntity.messageId,
+                    processedData.labelIds,
+                    messageEntity.userId
+                );
+            }
+
             this.logger.debug(
                 {
                     messageId: gmailMessage.id,
                     userId: messageEntity.userId,
                     hasPayload: !!gmailMessage.payload,
                     headerCount: gmailMessage.payload?.headers?.length || 0,
+                    labelCount: processedData.labelIds?.length || 0,
                 },
                 'Gmail message processed successfully'
             );
