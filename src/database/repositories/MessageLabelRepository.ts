@@ -12,24 +12,33 @@ export class MessageLabelRepository extends BaseRepositoryService<MessageLabelEn
     /**
      * Add labels to a message
      */
-    async addLabelsToMessage(messageId: string, labelIds: string[], userId: number): Promise<void> {
+    async addLabelsToMessage(messageId: number, labelIds: number[], userId: number): Promise<void> {
+        if (labelIds.length === 0) {
+            return;
+        }
+
         const entities = labelIds.map((labelId) => ({
             messageId,
             labelId,
             userId,
         }));
 
-        await this.saveMany(entities);
+        // Use upsert to handle duplicates gracefully
+        await this.repository.upsert(entities, ['messageId', 'labelId']);
     }
 
     /**
      * Remove labels from a message
      */
-    async removeLabelsFromMessage(messageId: string, labelIds: string[], userId: number): Promise<void> {
+    async removeLabelsFromMessage(messageId: number, labelIds: number[], userId: number): Promise<void> {
+        if (labelIds.length === 0) {
+            return;
+        }
+
         const entities = await this.repository.find({
             where: {
                 messageId,
-                labelId: labelIds.length > 0 ? In(labelIds) : undefined,
+                labelId: In(labelIds),
                 userId,
             },
         });
@@ -42,26 +51,29 @@ export class MessageLabelRepository extends BaseRepositoryService<MessageLabelEn
     /**
      * Replace all labels for a message
      */
-    async replaceMessageLabels(messageId: string, labelIds: string[], userId: number): Promise<void> {
-        // Remove all existing labels for this message
-        const existingLabels = await this.repository.find({
-            where: { messageId, userId },
+    async replaceMessageLabels(messageId: number, labelIds: number[], userId: number): Promise<void> {
+        await this.repository.manager.transaction(async (manager) => {
+            const repo = manager.getRepository(MessageLabelEntity);
+
+            // Hard delete all existing labels for this message to avoid soft-delete conflicts
+            await repo.delete({ messageId, userId });
+
+            // Add new labels
+            if (labelIds.length > 0) {
+                const entities = labelIds.map((labelId) => ({
+                    messageId,
+                    labelId,
+                    userId,
+                }));
+                await repo.insert(entities);
+            }
         });
-
-        if (existingLabels.length > 0) {
-            await this.deleteMany(existingLabels.map((e) => e.id));
-        }
-
-        // Add new labels
-        if (labelIds.length > 0) {
-            await this.addLabelsToMessage(messageId, labelIds, userId);
-        }
     }
 
     /**
      * Get all labels for a message
      */
-    async getMessageLabels(messageId: string, userId: number): Promise<string[]> {
+    async getMessageLabels(messageId: number, userId: number): Promise<number[]> {
         const entities = await this.repository.find({
             where: { messageId, userId },
         });

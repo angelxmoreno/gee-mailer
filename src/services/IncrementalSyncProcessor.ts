@@ -129,18 +129,20 @@ export class IncrementalSyncProcessor {
             // Apply label changes
             for (const labelChange of labelChanges) {
                 if (labelChange.addedLabels.length > 0) {
-                    await this.messageLabelRepo.addLabelsToMessage(
-                        labelChange.messageId,
-                        labelChange.addedLabels,
-                        userId
-                    );
+                    // TODO: Convert Gmail IDs to database PKs
+                    // await this.messageLabelRepo.addLabelsToMessage(
+                    //     convertGmailMessageIdToDbId(labelChange.messageId),
+                    //     convertGmailLabelIdsToDbIds(labelChange.addedLabels),
+                    //     userId
+                    // );
                 }
                 if (labelChange.removedLabels.length > 0) {
-                    await this.messageLabelRepo.removeLabelsFromMessage(
-                        labelChange.messageId,
-                        labelChange.removedLabels,
-                        userId
-                    );
+                    // TODO: Convert Gmail IDs to database PKs
+                    // await this.messageLabelRepo.removeLabelsFromMessage(
+                    //     convertGmailMessageIdToDbId(labelChange.messageId),
+                    //     convertGmailLabelIdsToDbIds(labelChange.removedLabels),
+                    //     userId
+                    // );
                 }
             }
 

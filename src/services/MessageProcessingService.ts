@@ -49,11 +49,12 @@ export class MessageProcessingService {
 
             // Update label relationships if labelIds are present
             if (processedData.labelIds && Array.isArray(processedData.labelIds)) {
-                await this.messageLabelRepo.replaceMessageLabels(
-                    messageEntity.messageId,
-                    processedData.labelIds,
-                    messageEntity.userId
-                );
+                // TODO: Implement ID conversion from Gmail IDs to database PKs
+                // await this.messageLabelRepo.replaceMessageLabels(
+                //     messageEntity.id, // Use database PK
+                //     convertGmailLabelIdsToDbIds(processedData.labelIds), // Convert Gmail IDs to DB IDs
+                //     messageEntity.userId
+                // );
             }
 
             this.logger.debug(

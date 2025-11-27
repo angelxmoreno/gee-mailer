@@ -6,14 +6,14 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, type Relation } from 'typ
 @Entity()
 @Index(['messageId', 'labelId'], { unique: true })
 export class MessageLabelEntity extends AppEntity {
-    @Column()
-    messageId: string; // Gmail message ID
+    @Column({ name: 'message_id' })
+    messageId: number; // FK to EmailMessageEntity.id
 
-    @Column()
-    labelId: string; // Gmail label ID
+    @Column({ name: 'label_id' })
+    labelId: number; // FK to LabelEntity.id
 
-    @Column()
-    userId: number; // For efficient querying by user
+    @Column({ name: 'user_id' })
+    userId: number; // FK to UserEntity.id
 
     // Relationships
     @ManyToOne(() => EmailMessageEntity, { onDelete: 'CASCADE' })
