@@ -4,7 +4,7 @@ import { EmailMessageEntity } from './EmailMessageEntity';
 
 @Entity()
 @Tree('closure-table')
-@Index(['messageId', 'partId'], { unique: true })
+@Index(['userId', 'messageId', 'partId'], { unique: true })
 @Index(['userId', 'mimeType'])
 export class MessagePartEntity extends AppEntity {
     @Column({ type: 'int', nullable: false })
