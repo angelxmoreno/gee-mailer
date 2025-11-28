@@ -1,3 +1,7 @@
+export { DisplayNameEntity } from './DisplayNameEntity';
+export { EmailAddressEntity } from './EmailAddressEntity';
+export { EmailAddressUsageEntity } from './EmailAddressUsageEntity';
+export { EmailContactEntity } from './EmailContactEntity';
 export { EmailMessageEntity } from './EmailMessageEntity';
 export { HeaderEntity } from './HeaderEntity';
 export { LabelEntity } from './LabelEntity';

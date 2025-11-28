@@ -1,5 +1,6 @@
 import type { EmailMessageEntity } from '@app/database/entities';
 import { EmailMessagesRepository, MessageLabelRepository } from '@app/database/repositories';
+import { ContactProcessingService } from '@app/services/ContactProcessingService';
 import { AppLogger } from '@app/utils/tokens';
 import type { gmail_v1 } from 'googleapis';
 import type { Logger } from 'pino';
@@ -12,15 +13,18 @@ export class MessageProcessingService {
     protected logger: Logger;
     protected emailMessagesRepo: EmailMessagesRepository;
     protected messageLabelRepo: MessageLabelRepository;
+    protected contactProcessingService: ContactProcessingService;
 
     constructor(
         @inject(AppLogger) logger: Logger,
         @inject(EmailMessagesRepository) emailMessagesRepo: EmailMessagesRepository,
-        @inject(MessageLabelRepository) messageLabelRepo: MessageLabelRepository
+        @inject(MessageLabelRepository) messageLabelRepo: MessageLabelRepository,
+        @inject(ContactProcessingService) contactProcessingService: ContactProcessingService
     ) {
         this.logger = logger;
         this.emailMessagesRepo = emailMessagesRepo;
         this.messageLabelRepo = messageLabelRepo;
+        this.contactProcessingService = contactProcessingService;
     }
 
     /**
@@ -47,6 +51,20 @@ export class MessageProcessingService {
             // Update entity with processed data
             const updatedEntity = await this.emailMessagesRepo.update(messageEntity, entityUpdates);
 
+            // Process contacts from email headers
+            try {
+                await this.contactProcessingService.processEmailMessageContacts(updatedEntity.userId, updatedEntity);
+            } catch (contactError) {
+                this.logger.warn(
+                    {
+                        messageId: gmailMessage.id,
+                        userId: messageEntity.userId,
+                        error: contactError instanceof Error ? contactError.message : 'Unknown error',
+                    },
+                    'Failed to process contacts from message headers, continuing with message processing'
+                );
+            }
+
             // Update label relationships if labelIds are present
             if (processedData.labelIds && Array.isArray(processedData.labelIds)) {
                 // TODO: Implement ID conversion from Gmail IDs to database PKs
@@ -64,8 +82,9 @@ export class MessageProcessingService {
                     hasPayload: !!gmailMessage.payload,
                     headerCount: gmailMessage.payload?.headers?.length || 0,
                     labelCount: processedData.labelIds?.length || 0,
+                    contactsProcessed: true,
                 },
-                'Gmail message processed successfully'
+                'Gmail message and contacts processed successfully'
             );
 
             return updatedEntity;

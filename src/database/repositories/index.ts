@@ -1,3 +1,7 @@
+export { DisplayNameRepository } from './DisplayNameRepository';
+export { EmailAddressRepository } from './EmailAddressRepository';
+export { EmailAddressUsageRepository } from './EmailAddressUsageRepository';
+export { EmailContactRepository } from './EmailContactRepository';
 export { EmailMessagesRepository } from './EmailMessagesRepository';
 export { HeaderRepository } from './HeaderRepository';
 export { LabelsRepository } from './LabelsRepository';
