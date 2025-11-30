@@ -8,7 +8,6 @@ Based on the project files and current codebase implementation, here's a compreh
 
 ### Database Schema & Entities
 - [ ] **Create remaining missing entities**
-  - [ ] `ContactEntity` for Gmail contacts management
   - [ ] `AttachmentEntity` for email attachment metadata
   - [ ] Complete `HeaderEntity` implementation if not fully implemented
   - [ ] `MessagePartEntity` entity relationship fixes (verify user scoping works)
@@ -21,10 +20,19 @@ Based on the project files and current codebase implementation, here's a compreh
   - [ ] Handle token refresh automatically
 
 - [ ] **Gmail Service Enhancements**
-  - [ ] Implement contact fetching from Gmail Contacts API
   - [ ] Add attachment downloading functionality
   - [ ] Verify all Gmail API rate limiting is proper
   - [ ] Test large mailbox handling (450k+ emails)
+
+### Google Contacts Integration (P1)
+- [ ] **Google People API Integration** (See [detailed plan](google-contacts-integration-plan.md))
+  - [ ] Add People API OAuth scope (`contacts.readonly`) - requires user re-auth
+  - [ ] Create `GooglePeopleService` for contact fetching and pagination
+  - [ ] Add Google-specific fields to contact entities (resourceName, etag, phoneNumbers, addresses)
+  - [ ] Implement contact mapping utilities (People API → existing entities)
+  - [ ] Create `GoogleContactsSyncProcessor` with queue integration
+  - [ ] Add CLI command for Google Contacts sync (`bun contacts:sync`)
+  - [ ] Handle contact deduplication between header-sourced and Google-sourced contacts
 
 ### Search & Storage Services
 - [ ] **Meilisearch Integration**
@@ -152,6 +160,14 @@ Based on the project files and current codebase implementation, here's a compreh
 - ✅ `MessageLabelEntity` for many-to-many relationships
 - ✅ `SyncProgressEntity` for tracking sync state
 - ✅ `UserEntity` with OAuth and sync fields
+
+### Contact System Entities (Recently Completed)
+- ✅ `EmailContactEntity` for contact management with source tracking
+- ✅ `EmailAddressEntity` for individual email addresses with usage stats
+- ✅ `DisplayNameEntity` for tracking all display name variations per email
+- ✅ `EmailAddressUsageEntity` for detailed usage audit trail per message
+- ✅ `ContactProcessingService` for email header processing and contact extraction
+- ✅ Contact processing integration into sync pipeline via MessageProcessingService
 
 ### Queue System (Recent Major Work)
 - ✅ BullMQ integration with 4 specialized queues

@@ -5,7 +5,7 @@ import { DisplayNameEntity } from './DisplayNameEntity';
 import { EmailAddressEntity } from './EmailAddressEntity';
 
 @Entity()
-@Index(['userId', 'emailAddressId', 'emailMessageId'], { unique: true })
+@Index(['userId', 'emailAddressId', 'emailMessageId', 'headerType'], { unique: true })
 export class EmailAddressUsageEntity extends AppEntity {
     @Column()
     userId: number; // For efficient querying
