@@ -74,7 +74,7 @@ export class InitialSyncProcessor {
                         totalMessages,
                         hasMorePages: !!pageToken,
                     },
-                    'Processed Gmail message list page'
+                    'Processed Gmail message list page (message details and contacts will be processed in batches)'
                 );
             } while (pageToken);
 

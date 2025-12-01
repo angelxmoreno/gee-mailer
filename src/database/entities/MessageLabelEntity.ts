@@ -4,7 +4,7 @@ import { AppEntity } from '@app/modules/typeorm/AppEntity.ts';
 import { Column, Entity, Index, JoinColumn, ManyToOne, type Relation } from 'typeorm';
 
 @Entity()
-@Index(['messageId', 'labelId'], { unique: true })
+@Index(['userId', 'messageId', 'labelId'], { unique: true })
 export class MessageLabelEntity extends AppEntity {
     @Column({ name: 'message_id' })
     messageId: number; // FK to EmailMessageEntity.id

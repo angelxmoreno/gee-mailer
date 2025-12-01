@@ -66,7 +66,9 @@ export class MessageBatchProcessor {
             });
         }
 
-        console.log(`[${syncType}] Processed ${unprocessedMessages.length} messages for user ${userId}`);
+        console.log(
+            `[${syncType}] Processed ${unprocessedMessages.length} messages (including contact extraction) for user ${userId}`
+        );
 
         return {
             userId,
