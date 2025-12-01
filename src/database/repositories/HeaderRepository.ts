@@ -12,9 +12,9 @@ export class HeaderRepository extends BaseRepositoryService<HeaderEntity> {
     /**
      * Find headers for a specific message
      */
-    async findByMessageId(messageId: string): Promise<HeaderEntity[]> {
+    async findByMessageId(userId: number, messageId: string): Promise<HeaderEntity[]> {
         return this.repository.find({
-            where: { messageId },
+            where: { userId, messageId },
             order: { name: 'ASC' },
         });
     }
@@ -22,9 +22,9 @@ export class HeaderRepository extends BaseRepositoryService<HeaderEntity> {
     /**
      * Find headers by message and header name
      */
-    async findByMessageAndName(messageId: string, name: string): Promise<HeaderEntity | null> {
+    async findByMessageAndName(userId: number, messageId: string, name: string): Promise<HeaderEntity | null> {
         return this.repository.findOne({
-            where: { messageId, name },
+            where: { userId, messageId, name },
         });
     }
 
