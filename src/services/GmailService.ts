@@ -320,4 +320,39 @@ export class GmailService {
 
         return { data: messages };
     }
+
+    /**
+     * Get attachment data from Gmail API
+     */
+    async getAttachment(userId: number, messageId: string, attachmentId: string): Promise<{ data: string | null }> {
+        const gmail = await this.createGmailClient();
+
+        this.logger.debug({ userId, messageId, attachmentId }, 'Fetching attachment from Gmail API');
+
+        try {
+            const response = await gmail.users.messages.attachments.get({
+                userId: 'me',
+                messageId,
+                id: attachmentId,
+            });
+
+            this.logger.debug(
+                { userId, messageId, attachmentId, size: response.data.size },
+                'Successfully fetched attachment data'
+            );
+
+            return { data: response.data.data || null };
+        } catch (error) {
+            this.logger.error(
+                {
+                    userId,
+                    messageId,
+                    attachmentId,
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                },
+                'Failed to fetch attachment from Gmail API'
+            );
+            throw error;
+        }
+    }
 }

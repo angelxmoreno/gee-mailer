@@ -1,5 +1,6 @@
 import type { EmailMessageEntity } from '@app/database/entities';
-import { EmailMessagesRepository, MessageLabelRepository } from '@app/database/repositories';
+import { EmailMessagesRepository, MessageLabelRepository, MessagePartRepository } from '@app/database/repositories';
+import { AttachmentProcessingService } from '@app/services/AttachmentProcessingService';
 import { ContactProcessingService } from '@app/services/ContactProcessingService';
 import { AppLogger } from '@app/utils/tokens';
 import type { gmail_v1 } from 'googleapis';
@@ -13,18 +14,24 @@ export class MessageProcessingService {
     protected logger: Logger;
     protected emailMessagesRepo: EmailMessagesRepository;
     protected messageLabelRepo: MessageLabelRepository;
+    protected messagePartRepo: MessagePartRepository;
     protected contactProcessingService: ContactProcessingService;
+    protected attachmentProcessingService: AttachmentProcessingService;
 
     constructor(
         @inject(AppLogger) logger: Logger,
         @inject(EmailMessagesRepository) emailMessagesRepo: EmailMessagesRepository,
         @inject(MessageLabelRepository) messageLabelRepo: MessageLabelRepository,
-        @inject(ContactProcessingService) contactProcessingService: ContactProcessingService
+        @inject(MessagePartRepository) messagePartRepo: MessagePartRepository,
+        @inject(ContactProcessingService) contactProcessingService: ContactProcessingService,
+        @inject(AttachmentProcessingService) attachmentProcessingService: AttachmentProcessingService
     ) {
         this.logger = logger;
         this.emailMessagesRepo = emailMessagesRepo;
         this.messageLabelRepo = messageLabelRepo;
+        this.messagePartRepo = messagePartRepo;
         this.contactProcessingService = contactProcessingService;
+        this.attachmentProcessingService = attachmentProcessingService;
     }
 
     /**
@@ -65,6 +72,30 @@ export class MessageProcessingService {
                 );
             }
 
+            // Process attachments from message parts
+            try {
+                const messageParts = await this.messagePartRepo.findByMessageId(
+                    updatedEntity.userId,
+                    updatedEntity.messageId
+                );
+                if (messageParts.length > 0) {
+                    await this.attachmentProcessingService.processMessageAttachments(
+                        updatedEntity.userId,
+                        updatedEntity,
+                        messageParts
+                    );
+                }
+            } catch (attachmentError) {
+                this.logger.warn(
+                    {
+                        messageId: gmailMessage.id,
+                        userId: messageEntity.userId,
+                        error: attachmentError instanceof Error ? attachmentError.message : 'Unknown error',
+                    },
+                    'Failed to process attachments from message parts, continuing with message processing'
+                );
+            }
+
             // Update label relationships if labelIds are present
             if (processedData.labelIds && Array.isArray(processedData.labelIds)) {
                 // TODO: Implement ID conversion from Gmail IDs to database PKs
@@ -83,8 +114,9 @@ export class MessageProcessingService {
                     headerCount: gmailMessage.payload?.headers?.length || 0,
                     labelCount: processedData.labelIds?.length || 0,
                     contactsProcessed: true,
+                    attachmentsProcessed: true,
                 },
-                'Gmail message and contacts processed successfully'
+                'Gmail message, contacts, and attachments processed successfully'
             );
 
             return updatedEntity;
