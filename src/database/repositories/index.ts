@@ -1,3 +1,4 @@
+export { AttachmentRepository } from './AttachmentRepository';
 export { DisplayNameRepository } from './DisplayNameRepository';
 export { EmailAddressRepository } from './EmailAddressRepository';
 export { EmailAddressUsageRepository } from './EmailAddressUsageRepository';

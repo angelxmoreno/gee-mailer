@@ -1,3 +1,4 @@
+export { AttachmentEntity } from './AttachmentEntity';
 export { DisplayNameEntity } from './DisplayNameEntity';
 export { EmailAddressEntity } from './EmailAddressEntity';
 export { EmailAddressUsageEntity } from './EmailAddressUsageEntity';

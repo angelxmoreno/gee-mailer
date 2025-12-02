@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { appContainer } from '@app/config.ts';
 import { createQueueConfig } from '@app/modules/bullmq/types';
 import {
+    type AttachmentDownloadPayload,
+    AttachmentDownloadSchema,
     type IncrementalSyncPayload,
     IncrementalSyncSchema,
     type InitialSyncPayload,
@@ -11,6 +13,7 @@ import {
     type MessageBatchPayload,
     MessageBatchSchema,
 } from '@app/queues/types.ts';
+import { AttachmentDownloadProcessor } from '@app/services/AttachmentDownloadProcessor.ts';
 import { IncrementalSyncProcessor } from '@app/services/IncrementalSyncProcessor.ts';
 import { InitialSyncProcessor } from '@app/services/InitialSyncProcessor.ts';
 import { LabelsSyncProcessor } from '@app/services/LabelsSyncProcessor.ts';
@@ -155,6 +158,42 @@ const queueConfig = createQueueConfig({
                     options: {
                         concurrency: 8,
                         limiter: { max: 60, duration: 60000 },
+                    },
+                },
+            },
+        },
+
+        attachments: {
+            options: {
+                defaultJobOptions: {
+                    removeOnComplete: 50,
+                    removeOnFail: 100,
+                    attempts: 3,
+                    backoff: { type: 'exponential', delay: 3000 },
+                },
+            },
+            workers: {
+                downloadAttachment: {
+                    schema: AttachmentDownloadSchema,
+                    processor: async (job: Job<AttachmentDownloadPayload>) => {
+                        // Only process jobs with matching name
+                        if (job.name !== 'downloadAttachment') {
+                            return;
+                        }
+
+                        // Ensure database is initialized
+                        const dataSource = appContainer.resolve(DataSource);
+                        const attachmentDownloadProcessor = appContainer.resolve(AttachmentDownloadProcessor);
+
+                        if (!dataSource.isInitialized) {
+                            await dataSource.initialize();
+                        }
+
+                        return attachmentDownloadProcessor.process(job.data);
+                    },
+                    options: {
+                        concurrency: 3, // Moderate concurrency for downloads
+                        limiter: { max: 10, duration: 60000 }, // 10 downloads per minute to respect Gmail API limits
                     },
                 },
             },

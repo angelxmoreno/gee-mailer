@@ -1,5 +1,6 @@
 import { AppEntity } from '@app/modules/typeorm/AppEntity.ts';
 import { Column, Entity, Index, OneToMany, type Relation } from 'typeorm';
+import { AttachmentEntity } from './AttachmentEntity';
 import { HeaderEntity } from './HeaderEntity';
 import { MessageLabelEntity } from './MessageLabelEntity';
 import { MessagePartEntity } from './MessagePartEntity';
@@ -74,4 +75,11 @@ export class EmailMessageEntity extends AppEntity {
         { cascade: true }
     )
     messageLabels: Relation<MessageLabelEntity[]>;
+
+    @OneToMany(
+        () => AttachmentEntity,
+        (attachment) => attachment.message,
+        { cascade: true }
+    )
+    attachments: Relation<AttachmentEntity[]>;
 }

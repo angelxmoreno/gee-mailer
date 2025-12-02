@@ -13,9 +13,9 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
     /**
      * Find all parts for a specific message with hierarchy
      */
-    async findByMessageId(messageId: string): Promise<MessagePartEntity[]> {
+    async findByMessageId(userId: number, messageId: string): Promise<MessagePartEntity[]> {
         return this.repository.find({
-            where: { messageId },
+            where: { userId, messageId },
             relations: ['childParts'],
             order: { partId: 'ASC' },
         });
@@ -24,10 +24,11 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
     /**
      * Find root parts (no parent) for a message
      */
-    async findRootPartsByMessageId(messageId: string): Promise<MessagePartEntity[]> {
+    async findRootPartsByMessageId(userId: number, messageId: string): Promise<MessagePartEntity[]> {
         return this.repository
             .createQueryBuilder('part')
-            .where('part.messageId = :messageId', { messageId })
+            .where('part.userId = :userId', { userId })
+            .andWhere('part.messageId = :messageId', { messageId })
             .andWhere('part.parentId IS NULL')
             .leftJoinAndSelect('part.childParts', 'childParts')
             .orderBy('part.partId', 'ASC')
@@ -37,10 +38,11 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
     /**
      * Find attachments for a message (parts with filenames)
      */
-    async findAttachmentsByMessageId(messageId: string): Promise<MessagePartEntity[]> {
+    async findAttachmentsByMessageId(userId: number, messageId: string): Promise<MessagePartEntity[]> {
         return this.repository
             .createQueryBuilder('part')
-            .where('part.messageId = :messageId', { messageId })
+            .where('part.userId = :userId', { userId })
+            .andWhere('part.messageId = :messageId', { messageId })
             .andWhere('part.filename IS NOT NULL')
             .andWhere('part.filename != :empty', { empty: '' })
             .orderBy('part.filename', 'ASC')
@@ -50,9 +52,13 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
     /**
      * Find parts by MIME type for a message
      */
-    async findByMessageIdAndMimeType(messageId: string, mimeType: string): Promise<MessagePartEntity[]> {
+    async findByMessageIdAndMimeType(
+        userId: number,
+        messageId: string,
+        mimeType: string
+    ): Promise<MessagePartEntity[]> {
         return this.repository.find({
-            where: { messageId, mimeType },
+            where: { userId, messageId, mimeType },
             order: { partId: 'ASC' },
         });
     }
@@ -60,10 +66,11 @@ export class MessagePartRepository extends BaseRepositoryService<MessagePartEnti
     /**
      * Find text content parts (text/plain, text/html)
      */
-    async findTextPartsByMessageId(messageId: string): Promise<MessagePartEntity[]> {
+    async findTextPartsByMessageId(userId: number, messageId: string): Promise<MessagePartEntity[]> {
         return this.repository
             .createQueryBuilder('part')
-            .where('part.messageId = :messageId', { messageId })
+            .where('part.userId = :userId', { userId })
+            .andWhere('part.messageId = :messageId', { messageId })
             .andWhere('part.mimeType LIKE :textType', { textType: 'text/%' })
             .orderBy('part.partId', 'ASC')
             .getMany();

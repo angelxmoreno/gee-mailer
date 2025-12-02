@@ -7,10 +7,10 @@ Based on the project files and current codebase implementation, here's a compreh
 ## High Priority (P0) - Core Functionality
 
 ### Database Schema & Entities
-- [ ] **Create remaining missing entities**
-  - [ ] `AttachmentEntity` for email attachment metadata
-  - [ ] Complete `HeaderEntity` implementation if not fully implemented
-  - [ ] `MessagePartEntity` entity relationship fixes (verify user scoping works)
+- [x] **Create remaining missing entities**
+  - [x] `AttachmentEntity` for email attachment metadata
+  - [x] Complete `HeaderEntity` implementation if not fully implemented
+  - [x] `MessagePartEntity` entity relationship fixes (verify user scoping works)
 
 ### Gmail Integration Completion
 - [ ] **OAuth Setup & Management**
@@ -168,6 +168,13 @@ Based on the project files and current codebase implementation, here's a compreh
 - ✅ `EmailAddressUsageEntity` for detailed usage audit trail per message
 - ✅ `ContactProcessingService` for email header processing and contact extraction
 - ✅ Contact processing integration into sync pipeline via MessageProcessingService
+
+### Entity Infrastructure Completion (Recently Completed)
+- ✅ `AttachmentEntity` for email attachment metadata and download tracking
+- ✅ `AttachmentRepository` with comprehensive attachment management methods
+- ✅ `HeaderEntity` verification and completeness check (fully implemented)
+- ✅ `MessagePartEntity` user scoping fixes (critical security issue resolved)
+- ✅ `HeaderRepository` user scoping fixes (critical security issue resolved)
 
 ### Queue System (Recent Major Work)
 - ✅ BullMQ integration with 4 specialized queues

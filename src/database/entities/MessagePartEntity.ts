@@ -44,4 +44,7 @@ export class MessagePartEntity extends AppEntity {
 
     @Column({ type: 'integer', nullable: true })
     sizeEstimate?: number | null;
+
+    @Column({ type: 'varchar', length: 100, nullable: true })
+    gmailAttachmentId?: string | null; // Gmail's attachment ID from body.attachmentId
 }
