@@ -85,6 +85,7 @@ export class EmailMessagesRepository extends BaseRepositoryService<EmailMessageE
                 filename: partData.filename || null,
                 body: partData.body?.data || null,
                 sizeEstimate: partData.body?.size || null,
+                gmailAttachmentId: partData.body?.attachmentId || null, // Gmail's attachment ID for API calls
             };
 
             extractedParts.push(part);

@@ -75,7 +75,7 @@ export class AttachmentProcessingService {
     private identifyAttachmentParts(messageParts: MessagePartEntity[]): MessagePartEntity[] {
         return messageParts.filter((part) => {
             // Has a filename (most reliable indicator)
-            if (part.filename && part.filename.trim()) {
+            if (part.filename?.trim()) {
                 return true;
             }
 
@@ -152,16 +152,30 @@ export class AttachmentProcessingService {
                 isInline
             );
 
-            // Enqueue download job for the attachment
-            await this.enqueueAttachmentDownload({
-                userId,
-                attachmentId: attachment.id,
-                messageId,
-                partId: part.partId,
-                filename,
-                mimeType: part.mimeType,
-                sizeBytes: part.sizeEstimate || 0,
-            });
+            // Only enqueue download if Gmail provided an attachment ID (large attachments)
+            if (part.gmailAttachmentId) {
+                await this.enqueueAttachmentDownload({
+                    userId,
+                    attachmentId: attachment.id, // Database ID for status updates
+                    gmailAttachmentId: part.gmailAttachmentId, // Gmail ID for API calls
+                    messageId,
+                    partId: part.partId,
+                    filename,
+                    mimeType: part.mimeType,
+                    sizeBytes: part.sizeEstimate || 0,
+                });
+            } else {
+                this.logger.debug(
+                    {
+                        userId,
+                        messageId,
+                        partId: part.partId,
+                        filename,
+                        hasBodyData: !!part.body,
+                    },
+                    'Attachment has inline body data, no separate download needed'
+                );
+            }
 
             this.logger.debug(
                 {
@@ -195,7 +209,7 @@ export class AttachmentProcessingService {
      */
     private determineFilename(part: MessagePartEntity): string {
         // Use provided filename if available
-        if (part.filename && part.filename.trim()) {
+        if (part.filename?.trim()) {
             return part.filename.trim();
         }
 

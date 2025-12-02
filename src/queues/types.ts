@@ -20,7 +20,8 @@ export const MessageBatchSchema = UserIdentifier.extend({
 export const LabelSyncSchema = UserIdentifier;
 
 export const AttachmentDownloadSchema = UserIdentifier.extend({
-    attachmentId: z.number(),
+    attachmentId: z.number(), // Database attachment ID for status updates
+    gmailAttachmentId: z.string(), // Gmail's attachment ID for API calls
     messageId: z.string(),
     partId: z.string(),
     filename: z.string(),

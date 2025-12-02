@@ -21,7 +21,7 @@ export class AttachmentDownloadProcessor {
      * Process attachment download job
      */
     async process(payload: AttachmentDownloadPayload): Promise<void> {
-        const { userId, attachmentId, messageId, partId, filename, mimeType, sizeBytes } = payload;
+        const { userId, attachmentId, gmailAttachmentId, messageId, partId, filename, mimeType, sizeBytes } = payload;
 
         try {
             // Update status to downloading
@@ -31,6 +31,7 @@ export class AttachmentDownloadProcessor {
                 {
                     userId,
                     attachmentId,
+                    gmailAttachmentId,
                     messageId,
                     partId,
                     filename,
@@ -40,8 +41,8 @@ export class AttachmentDownloadProcessor {
                 'Starting attachment download'
             );
 
-            // Download attachment data from Gmail
-            const attachmentData = await this.gmailService.getAttachment(userId, messageId, partId);
+            // Download attachment data from Gmail using Gmail's attachment ID
+            const attachmentData = await this.gmailService.getAttachment(userId, messageId, gmailAttachmentId);
 
             if (!attachmentData?.data) {
                 throw new Error('No attachment data received from Gmail API');
