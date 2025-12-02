@@ -73,6 +73,7 @@ export class MessageProcessingService {
             }
 
             // Process attachments from message parts
+            let attachmentsProcessed = false;
             try {
                 const messageParts = await this.messagePartRepo.findByMessageId(
                     updatedEntity.userId,
@@ -84,6 +85,7 @@ export class MessageProcessingService {
                         updatedEntity,
                         messageParts
                     );
+                    attachmentsProcessed = true;
                 }
             } catch (attachmentError) {
                 this.logger.warn(
@@ -114,7 +116,7 @@ export class MessageProcessingService {
                     headerCount: gmailMessage.payload?.headers?.length || 0,
                     labelCount: processedData.labelIds?.length || 0,
                     contactsProcessed: true,
-                    attachmentsProcessed: true,
+                    attachmentsProcessed,
                 },
                 'Gmail message, contacts, and attachments processed successfully'
             );

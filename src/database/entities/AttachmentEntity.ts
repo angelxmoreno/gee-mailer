@@ -34,7 +34,7 @@ export class AttachmentEntity extends AppEntity {
     @Column({ default: false })
     isInline: boolean; // Is this an inline attachment?
 
-    @Column({ nullable: true, default: null })
+    @Column({ type: 'text', nullable: true, default: null })
     downloadUrl?: string | null; // MinIO/S3 URL after download
 
     @Column({ nullable: true, default: null })

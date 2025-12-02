@@ -102,6 +102,7 @@ export class AttachmentProcessingService {
             'image/',
             'audio/',
             'video/',
+            'text/calendar',
             // Exclude text types that are typically message content
             // 'text/plain' and 'text/html' are usually message body
         ];
@@ -218,6 +219,7 @@ export class AttachmentProcessingService {
             'application/xml': '.xml',
             'text/plain': '.txt',
             'text/csv': '.csv',
+            'text/calendar': '.ics',
             'audio/mpeg': '.mp3',
             'audio/wav': '.wav',
             'video/mp4': '.mp4',

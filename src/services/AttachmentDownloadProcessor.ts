@@ -90,17 +90,4 @@ export class AttachmentDownloadProcessor {
             throw error;
         }
     }
-
-    /**
-     * Check if Gmail service has attachment download capability
-     */
-    async validateGmailService(userId: number): Promise<boolean> {
-        try {
-            // This could check if the Gmail service has the getAttachment method
-            // and if the user has proper authentication
-            return typeof this.gmailService.getAttachment === 'function';
-        } catch {
-            return false;
-        }
-    }
 }

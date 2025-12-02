@@ -10,7 +10,7 @@ export class AttachmentRepository extends BaseRepositoryService<AttachmentEntity
     }
 
     /**
-     * Find or create an attachment record
+     * Find or create an attachment record using atomic upsert
      */
     async findOrCreate(
         userId: number,
@@ -22,23 +22,27 @@ export class AttachmentRepository extends BaseRepositoryService<AttachmentEntity
         contentId?: string,
         isInline: boolean = false
     ): Promise<AttachmentEntity> {
-        let attachment = await this.repository.findOne({
-            where: { userId, messageId, partId },
-        });
+        const attachmentData = {
+            userId,
+            messageId,
+            partId,
+            filename,
+            mimeType,
+            sizeBytes,
+            contentId: contentId || null,
+            isInline,
+            status: 'pending' as const,
+        };
 
-        if (!attachment) {
-            attachment = await this.repository.save({
-                userId,
-                messageId,
-                partId,
-                filename,
-                mimeType,
-                sizeBytes,
-                contentId: contentId || null,
-                isInline,
-                status: 'pending',
-            });
-        }
+        // Use atomic upsert to prevent race conditions and update existing records
+        await this.repository.upsert(attachmentData, ['userId', 'messageId', 'partId']);
+
+        // Return the created/updated attachment
+        const attachment = await this.repository.findOneByOrFail({
+            userId,
+            messageId,
+            partId,
+        });
 
         return attachment;
     }
