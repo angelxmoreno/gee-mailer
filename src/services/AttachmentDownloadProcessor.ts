@@ -25,7 +25,7 @@ export class AttachmentDownloadProcessor {
 
         try {
             // Update status to downloading
-            await this.attachmentRepo.updateDownloadStatus(attachmentId, 'downloading');
+            await this.attachmentRepo.updateDownloadStatus(userId, attachmentId, 'downloading');
 
             this.logger.debug(
                 {
@@ -57,7 +57,7 @@ export class AttachmentDownloadProcessor {
 
             // Mark as completed with download URL placeholder
             const downloadUrl = `attachment://${userId}/${messageId}/${partId}/${filename}`;
-            await this.attachmentRepo.updateDownloadStatus(attachmentId, 'downloaded', downloadUrl);
+            await this.attachmentRepo.updateDownloadStatus(userId, attachmentId, 'downloaded', downloadUrl);
 
             this.logger.info(
                 {
@@ -74,7 +74,7 @@ export class AttachmentDownloadProcessor {
             const errorMessage = error instanceof Error ? error.message : 'Unknown download error';
 
             // Mark as failed
-            await this.attachmentRepo.updateDownloadStatus(attachmentId, 'failed', undefined, errorMessage);
+            await this.attachmentRepo.updateDownloadStatus(userId, attachmentId, 'failed', undefined, errorMessage);
 
             this.logger.error(
                 {

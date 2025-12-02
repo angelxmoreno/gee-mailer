@@ -88,6 +88,7 @@ export class AttachmentRepository extends BaseRepositoryService<AttachmentEntity
      * Update download status
      */
     async updateDownloadStatus(
+        userId: number,
         attachmentId: number,
         status: 'downloading' | 'downloaded' | 'failed',
         downloadUrl?: string,
@@ -111,7 +112,7 @@ export class AttachmentRepository extends BaseRepositoryService<AttachmentEntity
             updateData.errorMessage = errorMessage;
         }
 
-        await this.repository.update(attachmentId, updateData);
+        await this.repository.update({ id: attachmentId, userId }, updateData);
     }
 
     /**
