@@ -42,88 +42,156 @@
 
 ## Implementation Phases
 
-### Phase 1: Token Security (Critical Priority)
+### Phase 1: Token Security (Critical Priority) ✅
 
 **Goal**: Secure token storage with encryption
 
+**✅ COMPLETED**: Implemented using TypeORM transformers with Iron-webcrypto for secure, authenticated encryption.
+
 **Implementation**:
 ```typescript
-// New service: src/services/TokenCryptoService.ts
-export class TokenCryptoService {
-  private readonly algorithm = 'aes-256-gcm';
-  private readonly keyDerivationSalt: Buffer;
+// src/modules/typeorm/transformers/TokenEncryptTransformer.ts
+export class TokenEncryptTransformer implements ValueTransformer {
+    protected tokenSecret: string;
 
-  constructor(private encryptionKey: string) {
-    this.keyDerivationSalt = Buffer.from(process.env.TOKEN_SALT || 'default-salt');
-  }
+    constructor(tokenSecret: string) {
+        if (tokenSecret.length < 32) {
+            throw new Error('TOKEN_ENCRYPTION_SECRET must be at least 32 characters');
+        }
+        this.tokenSecret = tokenSecret;
+    }
 
-  encrypt(token: string): string {
-    const iv = crypto.randomBytes(16);
-    const key = this.deriveKey();
-    const cipher = crypto.createCipheriv(this.algorithm, key, iv);
-    let encrypted = cipher.update(token, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${encrypted}:${authTag.toString('hex')}`;
-  }
+    /**
+     * Converts plain token -> encrypted sealed string before saving.
+     */
+    async to(value: string | null): Promise<string | null> {
+        if (!value) return value;
+        // Seal converts any JSON-serializable data → encrypted, integrity-checked blob
+        return await Iron.seal(value, this.tokenSecret, Iron.defaults);
+    }
 
-  decrypt(encryptedToken: string): string {
-    const [ivHex, encrypted, authTagHex] = encryptedToken.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const key = this.deriveKey();
-    const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
-    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  }
+    /**
+     * Converts sealed string → decrypted token when reading from DB.
+     */
+    async from(value: string | null): Promise<string | null> {
+        if (!value || !this.isEncrypted(value)) {
+            return value;
+        }
 
-  private deriveKey(): Buffer {
-    return crypto.pbkdf2Sync(this.encryptionKey, this.keyDerivationSalt, 100000, 32, 'sha256');
-  }
+        try {
+            // Unseal restores the original plaintext token
+            const result = await Iron.unseal(value, this.tokenSecret, Iron.defaults);
+            return result as string;
+        } catch (error) {
+            throw new Error('Token decryption failed - possible corruption or key mismatch', { cause: error });
+        }
+    }
+
+    isEncrypted(value: string): boolean {
+        return value.startsWith('Fe26.2**');
+    }
+}
+
+/**
+ * Factory function to create TokenEncryptTransformer with the configured secret.
+ * Avoids circular dependency by using environment variable directly.
+ */
+export function createTokenEncryptTransformer(): TokenEncryptTransformer {
+    const secret = process.env.TOKEN_ENCRYPTION_SECRET || 'this-is-the-default-token-secret';
+    return new TokenEncryptTransformer(secret);
 }
 ```
 
-**Database Migration**:
-```sql
--- Migrate existing tokens to encrypted format
-UPDATE users SET
-  access_token = encrypt_token(access_token),
-  refresh_token = encrypt_token(refresh_token)
-WHERE access_token IS NOT NULL;
+**Entity Integration**:
+```typescript
+// src/database/entities/UserEntity.ts
+import { createTokenEncryptTransformer } from '@app/modules/typeorm/transformers/TokenEncryptTransformer';
+
+@Column({ type: 'text', nullable: true, transformer: createTokenEncryptTransformer() })
+accessToken?: string | null;
+
+@Column({ type: 'text', nullable: true, transformer: createTokenEncryptTransformer() })
+refreshToken?: string | null;
+```
+
+**Configuration**:
+```typescript
+// Added to src/types/AppConfig.ts
+secrets: z.object({
+    tokenEncryptionSecret: z.string(),
+})
+
+// src/utils/createConfig.ts
+secrets: {
+    tokenEncryptionSecret: Bun.env.TOKEN_ENCRYPTION_SECRET || 'default-secret',
+}
 ```
 
 **Environment Variables**:
 ```env
-TOKEN_ENCRYPTION_KEY=your-32-char-secret-key-here
-TOKEN_SALT=your-salt-here
+# Generate a strong secret with:
+# bun -e "console.log(require('node:crypto').randomBytes(64).toString('base64'))"
+TOKEN_ENCRYPTION_SECRET=your-base64-encoded-secret-here
 ```
 
-**Files to Create/Modify**:
-- `src/services/TokenCryptoService.ts` (new)
-- `src/database/repositories/UsersRepository.ts` (modify - add encryption/decryption)
-- `src/services/OAuthService.ts` (modify - use encryption)
-- `.env.example` (add token encryption vars)
+**Dependencies Added**:
+- `iron-webcrypto@2.0.0` - Industry-standard authenticated encryption library
+
+**Files Created/Modified**:
+- ✅ `src/modules/typeorm/transformers/TokenEncryptTransformer.ts` (new)
+- ✅ `src/database/entities/UserEntity.ts` (modified - added transformers)
+- ✅ `src/types/AppConfig.ts` (modified - added secrets config)
+- ✅ `src/utils/createConfig.ts` (modified - wire up secret)
+- ✅ `sample.env` (modified - added TOKEN_ENCRYPTION_SECRET)
+- ✅ `package.json` (modified - added iron-webcrypto dependency)
+
+**Security Benefits**:
+- ✅ **Authenticated Encryption**: Iron provides AEAD (encryption + integrity)
+- ✅ **Automatic Key Derivation**: No manual PBKDF2 needed
+- ✅ **Transparent Operation**: Works automatically with all ORM operations
+- ✅ **Industry Proven**: Iron is battle-tested (used in Hapi.js ecosystem)
+- ✅ **No Plaintext Exposure**: Tokens encrypted before hitting database
 
 **Acceptance Criteria**:
-- [ ] Tokens encrypted at rest in database
-- [ ] Automatic encryption/decryption in repositories
-- [ ] Environment-based key management
-- [ ] Backward compatibility with existing tokens
+- ✅ Tokens encrypted at rest in database
+- ✅ Automatic encryption/decryption in all database operations
+- ✅ Environment-based key management
+- ⚠️ **TODO**: Migration strategy for existing plaintext tokens
 
 ---
 
 ### Phase 2: Automatic Token Refresh (Critical Priority)
 
-**Goal**: Automatic token refresh before expiry
+**Goal**: Automatic token refresh before expiry with clean separation of concerns
+
+**Architecture Decision**: Create dedicated `TokenRefreshService` to avoid coupling issues and improve reusability.
+
+**Problem with Current Approach**:
+- OAuthService mixing OAuth flows with token lifecycle management
+- GmailService → OAuthService → CurrentUserService creates tight coupling
+- CurrentUserService can't refresh tokens independently
+- Token refresh logic locked inside OAuthService
+
+**Solution**: Dedicated `TokenRefreshService` that both CurrentUserService and OAuthService can use.
 
 **Implementation**:
 ```typescript
-// Enhanced OAuthService with refresh capabilities
-export class OAuthService {
-  // Add refresh functionality
-  async refreshTokensIfNeeded(): Promise<boolean> {
-    const user = await this.currentUserService.getCurrentUser();
+// New dedicated service for token lifecycle management
+@singleton()
+export class TokenRefreshService {
+  private oauth2Client: OAuth2Client;
+  private tokenRefreshHandle: NodeJS.Timeout | null = null;
+
+  constructor(
+    @inject(UsersRepository) private userRepo: UsersRepository,
+    @inject(AppLogger) private logger: Logger,
+    @inject('GoogleOAuth2Client') oauth2Client: OAuth2Client
+  ) {
+    this.oauth2Client = oauth2Client;
+  }
+
+  async refreshTokensIfNeeded(userId: number): Promise<boolean> {
+    const user = await this.userRepo.findById(userId);
     if (!user?.refreshToken || !user?.tokenExpiryDate) {
       return false;
     }
@@ -134,16 +202,16 @@ export class OAuthService {
     const expiryWithBuffer = new Date(user.tokenExpiryDate.getTime() - expiryBuffer);
 
     if (now >= expiryWithBuffer) {
-      return await this.refreshAccessToken();
+      return await this.refreshAccessToken(userId);
     }
 
     return true; // Token is still valid
   }
 
-  async refreshAccessToken(): Promise<boolean> {
+  async refreshAccessToken(userId: number): Promise<boolean> {
     try {
-      const user = await this.currentUserService.getCurrentUser();
-      if (!user?.refreshToken) {
+      const user = await this.userRepo.findByIdOrFail(userId);
+      if (!user.refreshToken) {
         throw new Error('No refresh token available');
       }
 
@@ -153,28 +221,42 @@ export class OAuthService {
 
       const { credentials } = await this.oauth2Client.refreshAccessToken();
 
-      // Update user with new tokens
-      await this.userRepo.updateTokens(user.id, {
+      // Update user with new tokens (encrypted automatically via transformer)
+      await this.userRepo.update(user, {
         accessToken: credentials.access_token!,
         tokenExpiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
-        refreshToken: credentials.refresh_token || user.refreshToken, // Keep existing if not provided
+        refreshToken: credentials.refresh_token || user.refreshToken,
       });
 
-      this.logger.info({ userId: user.id }, 'Tokens refreshed successfully');
+      this.logger.info({ userId }, 'Tokens refreshed successfully');
       return true;
     } catch (error) {
-      this.logger.error(error, 'Failed to refresh tokens');
+      this.logger.error({ userId, error }, 'Failed to refresh tokens');
       return false;
     }
   }
 
-  private tokenRefreshHandle: NodeJS.Timeout | null = null;
+  async isTokenExpiringSoon(userId: number, bufferMinutes = 5): Promise<boolean> {
+    const user = await this.userRepo.findById(userId);
+    if (!user?.tokenExpiryDate) return true; // Assume expired if no expiry date
 
+    const expiryBuffer = bufferMinutes * 60 * 1000;
+    const now = new Date();
+    const expiryWithBuffer = new Date(user.tokenExpiryDate.getTime() - expiryBuffer);
+
+    return now >= expiryWithBuffer;
+  }
+
+  // Background refresh scheduling
   async scheduleTokenRefresh(): Promise<void> {
-    // Schedule periodic token refresh checks
     this.tokenRefreshHandle = setInterval(async () => {
       try {
-        await this.refreshTokensIfNeeded();
+        // Get all users with tokens and refresh if needed
+        const usersWithTokens = await this.userRepo.findUsersWithRefreshTokens();
+
+        for (const user of usersWithTokens) {
+          await this.refreshTokensIfNeeded(user.id);
+        }
       } catch (error) {
         this.logger.error(error, 'Unexpected error during scheduled token refresh');
       }
@@ -190,36 +272,100 @@ export class OAuthService {
 }
 ```
 
-**Service Integration**:
+**Enhanced CurrentUserService**:
 ```typescript
-// Add to GmailService
-export class GmailService {
-  async ensureValidTokens(): Promise<void> {
-    const isValid = await this.oauthService.refreshTokensIfNeeded();
+export class CurrentUserService {
+  constructor(
+    @inject(TokenRefreshService) private tokenRefreshService: TokenRefreshService,
+    @inject(UsersRepository) private userRepo: UsersRepository
+  ) {}
+
+  // New method that guarantees fresh tokens
+  async getCurrentUserWithValidToken(): Promise<UserEntity> {
+    const user = await this.getCurrentUserOrFail();
+    const isValid = await this.tokenRefreshService.refreshTokensIfNeeded(user.id);
+
     if (!isValid) {
       throw new Error('Authentication required - please run: bun auth login');
     }
+
+    // Return fresh user data (tokens may have been updated)
+    return await this.userRepo.findByIdOrFail(user.id);
   }
 
-  // Wrap all API calls with token validation
-  async getMessages(): Promise<any> {
-    await this.ensureValidTokens();
-    // ... existing implementation
+  // Existing methods remain unchanged
+  async getCurrentUser(): Promise<UserEntity | null> { /* existing */ }
+  async getCurrentUserOrFail(): Promise<UserEntity> { /* existing */ }
+}
+```
+
+**Simplified OAuthService**:
+```typescript
+export class OAuthService {
+  constructor(
+    @inject(TokenRefreshService) private tokenRefreshService: TokenRefreshService
+  ) {}
+
+  // OAuth flow methods (login, callback, etc.)
+  async login(): Promise<string> { /* OAuth flow logic */ }
+  async handleCallback(code: string): Promise<UserEntity> { /* OAuth callback */ }
+
+  // Delegates token refresh to TokenRefreshService
+  async refreshTokensIfNeeded(userId: number): Promise<boolean> {
+    return await this.tokenRefreshService.refreshTokensIfNeeded(userId);
   }
 }
 ```
 
+**Clean GmailService Integration**:
+```typescript
+export class GmailService {
+  constructor(
+    @inject(CurrentUserService) private currentUserService: CurrentUserService
+  ) {}
+
+  // All API methods automatically get fresh tokens
+  async fetchMessageList(pageToken?: string): Promise<MessageListResponse> {
+    const user = await this.currentUserService.getCurrentUserWithValidToken();
+
+    // Tokens are guaranteed to be fresh - proceed with API call
+    const gmail = this.createGmailClient(user);
+    return await gmail.users.messages.list({ userId: 'me', pageToken });
+  }
+
+  async fetchMessage(messageId: string): Promise<MessageData> {
+    const user = await this.currentUserService.getCurrentUserWithValidToken();
+
+    // No need for manual token validation
+    const gmail = this.createGmailClient(user);
+    return await gmail.users.messages.get({ userId: 'me', id: messageId });
+  }
+}
+```
+
+**Architecture Benefits**:
+- ✅ **Clean separation**: Token lifecycle separate from OAuth flows
+- ✅ **Improved reusability**: Any service can refresh tokens via CurrentUserService
+- ✅ **Reduced coupling**: GmailService no longer depends on OAuthService
+- ✅ **Better testability**: Each service has focused responsibilities
+- ✅ **Enhanced maintainability**: Token logic centralized in one place
+
 **Files to Create/Modify**:
-- `src/services/OAuthService.ts` (modify - add refresh methods)
-- `src/database/repositories/UsersRepository.ts` (modify - add updateTokens method)
-- `src/services/GmailService.ts` (modify - add token validation)
-- `src/services/CurrentUserService.ts` (modify - token refresh integration)
+- `src/services/TokenRefreshService.ts` (new - dedicated token lifecycle management)
+- `src/services/CurrentUserService.ts` (modify - add getCurrentUserWithValidToken method)
+- `src/services/GmailService.ts` (modify - use CurrentUserService for token validation)
+- `src/services/OAuthService.ts` (modify - delegate token refresh to TokenRefreshService)
+- `src/database/repositories/UsersRepository.ts` (modify - add findUsersWithRefreshTokens method)
+- `src/utils/createContainer.ts` (modify - register TokenRefreshService and OAuth2Client)
 
 **Acceptance Criteria**:
-- [ ] Automatic token refresh before expiry
-- [ ] Background token refresh scheduler
-- [ ] Service-level token validation
-- [ ] Graceful authentication error handling
+- [ ] TokenRefreshService handles all token lifecycle operations
+- [ ] CurrentUserService provides getCurrentUserWithValidToken() method
+- [ ] All API services automatically get fresh tokens via CurrentUserService
+- [ ] Background scheduler refreshes tokens for all users
+- [ ] Graceful handling of refresh failures with clear error messages
+- [ ] OAuthService focuses only on OAuth flows, delegates token management
+- [ ] Clean dependency injection with proper service separation
 
 ---
 

@@ -21,6 +21,9 @@ export const baseConfig: AppConfig = {
         healthCheckInterval: 30000,
         autoRestart: true,
     },
+    secrets: {
+        tokenEncryptionSecret: '0123456789A0123456789B0123456789',
+    },
 };
 
 export const developmentConfig: AppConfig = merge(baseConfig, {

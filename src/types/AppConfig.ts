@@ -31,6 +31,9 @@ export const AppConfigSchema = z.object({
             healthCheckInterval: 30000,
             autoRestart: true,
         }),
+    secrets: z.object({
+        tokenEncryptionSecret: z.string(),
+    }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
