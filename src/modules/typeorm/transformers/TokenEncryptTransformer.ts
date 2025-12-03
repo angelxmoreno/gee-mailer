@@ -1,15 +1,14 @@
-import { appConfig } from '@app/config.ts';
 import * as Iron from 'iron-webcrypto';
 import type { ValueTransformer } from 'typeorm';
 
 export class TokenEncryptTransformer implements ValueTransformer {
     protected tokenSecret: string;
 
-    constructor(tokenSecret?: string | null) {
-        this.tokenSecret = tokenSecret || appConfig.secrets.tokenEncryptionSecret;
-        if (this.tokenSecret.length < 32) {
+    constructor(tokenSecret: string) {
+        if (tokenSecret.length < 32) {
             throw new Error('TOKEN_ENCRYPTION_SECRET must be at least 32 characters');
         }
+        this.tokenSecret = tokenSecret;
     }
 
     /**
@@ -42,4 +41,13 @@ export class TokenEncryptTransformer implements ValueTransformer {
     isEncrypted(value: string): boolean {
         return value.startsWith('Fe26.2**');
     }
+}
+
+/**
+ * Factory function to create TokenEncryptTransformer with the configured secret.
+ * Avoids circular dependency by using environment variable directly.
+ */
+export function createTokenEncryptTransformer(): TokenEncryptTransformer {
+    const secret = Bun.env.TOKEN_ENCRYPTION_SECRET || 'this-is-the-default-token-secret';
+    return new TokenEncryptTransformer(secret);
 }

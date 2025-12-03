@@ -1,19 +1,10 @@
 import 'reflect-metadata';
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import type { ValueTransformer } from 'typeorm';
-
-// Mock the appConfig to avoid circular dependency
-mock.module('@app/config.ts', () => ({
-    appConfig: {
-        secrets: {
-            tokenEncryptionSecret: 'default-mock-secret-key-that-is-at-least-32-characters-long',
-        },
-    },
-}));
 
 interface TokenEncryptTransformerConstructor {
     new (
-        tokenSecret?: string | null
+        tokenSecret: string
     ): ValueTransformer & {
         isEncrypted(value: string): boolean;
         to(value: string | null): Promise<string | null>;
@@ -51,15 +42,15 @@ describe('TokenEncryptTransformer', () => {
                 'TOKEN_ENCRYPTION_SECRET must be at least 32 characters'
             );
         });
+    });
 
-        test('should fall back to appConfig secret when no secret provided', async () => {
+    describe('factory function', () => {
+        test('should create transformer with environment variable', async () => {
             const module = await import('@app/modules/typeorm/transformers/TokenEncryptTransformer');
-            expect(() => new module.TokenEncryptTransformer()).not.toThrow();
-        });
+            const transformer = module.createTokenEncryptTransformer();
 
-        test('should fall back to appConfig secret when null provided', async () => {
-            const module = await import('@app/modules/typeorm/transformers/TokenEncryptTransformer');
-            expect(() => new module.TokenEncryptTransformer(null)).not.toThrow();
+            expect(transformer).toBeDefined();
+            expect(transformer.isEncrypted).toBeFunction();
         });
     });
 
