@@ -63,6 +63,7 @@
         "eta": "^4.4.1",
         "googleapis": "^166.0.0",
         "inflection": "^3.0.2",
+        "iron-webcrypto": "^2.0.0",
         "open": "^11.0.0",
         "pg": "^8.16.3",
         "pino": "^10.1.0",

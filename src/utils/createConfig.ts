@@ -41,6 +41,9 @@ export const createConfig = (overrides?: DeepPartial<AppConfig>): AppConfig => {
             })(),
             autoRestart: Bun.env.WORKER_AUTO_RESTART !== 'false',
         },
+        secrets: {
+            tokenEncryptionSecret: Bun.env.TOKEN_ENCRYPTION_SECRET || 'this-is-the-default-token-secret',
+        },
     };
 
     const config = merge(appConfigEnv, overrides ?? {});

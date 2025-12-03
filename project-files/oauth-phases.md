@@ -42,74 +42,96 @@
 
 ## Implementation Phases
 
-### Phase 1: Token Security (Critical Priority)
+### Phase 1: Token Security (Critical Priority) ✅
 
 **Goal**: Secure token storage with encryption
 
+**✅ COMPLETED**: Implemented using TypeORM transformers with Iron-webcrypto for secure, authenticated encryption.
+
 **Implementation**:
 ```typescript
-// New service: src/services/TokenCryptoService.ts
-export class TokenCryptoService {
-  private readonly algorithm = 'aes-256-gcm';
-  private readonly keyDerivationSalt: Buffer;
+// src/modules/typeorm/transformers/TokenEncryptTransformer.ts
+export class TokenEncryptTransformer implements ValueTransformer {
+    protected tokenSecret: string;
 
-  constructor(private encryptionKey: string) {
-    this.keyDerivationSalt = Buffer.from(process.env.TOKEN_SALT || 'default-salt');
-  }
+    constructor(tokenSecret?: string | null) {
+        this.tokenSecret = tokenSecret || appConfig.secrets.tokenEncryptionSecret;
+    }
 
-  encrypt(token: string): string {
-    const iv = crypto.randomBytes(16);
-    const key = this.deriveKey();
-    const cipher = crypto.createCipheriv(this.algorithm, key, iv);
-    let encrypted = cipher.update(token, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    const authTag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${encrypted}:${authTag.toString('hex')}`;
-  }
+    /**
+     * Converts plain token -> encrypted sealed string before saving.
+     */
+    async to(value: string | null): Promise<string | null> {
+        if (!value) return value;
+        // Seal converts any JSON-serializable data → encrypted, integrity-checked blob
+        return await Iron.seal(value, this.tokenSecret, Iron.defaults);
+    }
 
-  decrypt(encryptedToken: string): string {
-    const [ivHex, encrypted, authTagHex] = encryptedToken.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const key = this.deriveKey();
-    const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
-    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  }
-
-  private deriveKey(): Buffer {
-    return crypto.pbkdf2Sync(this.encryptionKey, this.keyDerivationSalt, 100000, 32, 'sha256');
-  }
+    /**
+     * Converts sealed string → decrypted token when reading from DB.
+     */
+    async from(value: string | null): Promise<string | null> {
+        if (!value) return value;
+        // Unseal restores the original plaintext token
+        const result = await Iron.unseal(value, this.tokenSecret, Iron.defaults);
+        return result as string;
+    }
 }
 ```
 
-**Database Migration**:
-```sql
--- Migrate existing tokens to encrypted format
-UPDATE users SET
-  access_token = encrypt_token(access_token),
-  refresh_token = encrypt_token(refresh_token)
-WHERE access_token IS NOT NULL;
+**Entity Integration**:
+```typescript
+// src/database/entities/UserEntity.ts
+@Column({ type: 'text', nullable: true, transformer: new TokenEncryptTransformer() })
+accessToken?: string | null;
+
+@Column({ type: 'text', nullable: true, transformer: new TokenEncryptTransformer() })
+refreshToken?: string | null;
+```
+
+**Configuration**:
+```typescript
+// Added to src/types/AppConfig.ts
+secrets: z.object({
+    tokenEncryptionSecret: z.string(),
+})
+
+// src/utils/createConfig.ts
+secrets: {
+    tokenEncryptionSecret: Bun.env.TOKEN_ENCRYPTION_SECRET || 'default-secret',
+}
 ```
 
 **Environment Variables**:
 ```env
-TOKEN_ENCRYPTION_KEY=your-32-char-secret-key-here
-TOKEN_SALT=your-salt-here
+# Generate a strong secret with:
+# bun -e "console.log(require('node:crypto').randomBytes(64).toString('base64'))"
+TOKEN_ENCRYPTION_SECRET=your-base64-encoded-secret-here
 ```
 
-**Files to Create/Modify**:
-- `src/services/TokenCryptoService.ts` (new)
-- `src/database/repositories/UsersRepository.ts` (modify - add encryption/decryption)
-- `src/services/OAuthService.ts` (modify - use encryption)
-- `.env.example` (add token encryption vars)
+**Dependencies Added**:
+- `iron-webcrypto@2.0.0` - Industry-standard authenticated encryption library
+
+**Files Created/Modified**:
+- ✅ `src/modules/typeorm/transformers/TokenEncryptTransformer.ts` (new)
+- ✅ `src/database/entities/UserEntity.ts` (modified - added transformers)
+- ✅ `src/types/AppConfig.ts` (modified - added secrets config)
+- ✅ `src/utils/createConfig.ts` (modified - wire up secret)
+- ✅ `sample.env` (modified - added TOKEN_ENCRYPTION_SECRET)
+- ✅ `package.json` (modified - added iron-webcrypto dependency)
+
+**Security Benefits**:
+- ✅ **Authenticated Encryption**: Iron provides AEAD (encryption + integrity)
+- ✅ **Automatic Key Derivation**: No manual PBKDF2 needed
+- ✅ **Transparent Operation**: Works automatically with all ORM operations
+- ✅ **Industry Proven**: Iron is battle-tested (used in Hapi.js ecosystem)
+- ✅ **No Plaintext Exposure**: Tokens encrypted before hitting database
 
 **Acceptance Criteria**:
-- [ ] Tokens encrypted at rest in database
-- [ ] Automatic encryption/decryption in repositories
-- [ ] Environment-based key management
-- [ ] Backward compatibility with existing tokens
+- ✅ Tokens encrypted at rest in database
+- ✅ Automatic encryption/decryption in all database operations
+- ✅ Environment-based key management
+- ⚠️ **TODO**: Migration strategy for existing plaintext tokens
 
 ---
 

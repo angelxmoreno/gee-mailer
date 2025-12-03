@@ -1,4 +1,5 @@
 import { AppEntity } from '@app/modules/typeorm/AppEntity';
+import { TokenEncryptTransformer } from '@app/modules/typeorm/transformers/TokenEncryptTransformer.ts';
 import { Column, Entity, Index } from 'typeorm';
 
 @Entity()
@@ -14,10 +15,10 @@ export class UserEntity extends AppEntity {
     @Index({ unique: true })
     googleUid?: string | null;
 
-    @Column({ type: 'text', nullable: true })
+    @Column({ type: 'text', nullable: true, transformer: new TokenEncryptTransformer() })
     accessToken?: string | null;
 
-    @Column({ type: 'text', nullable: true })
+    @Column({ type: 'text', nullable: true, transformer: new TokenEncryptTransformer() })
     refreshToken?: string | null;
 
     @Column({ type: 'timestamp', nullable: true })
