@@ -1,11 +1,8 @@
-import { UsersRepository } from '@app/database/repositories';
 import { createDataSourceOptions } from '@app/modules/typeorm/createDataSourceOptions';
-import { CurrentUserService } from '@app/services/CurrentUserService.ts';
-import { OAuthService } from '@app/services/OAuthService.ts';
 import type { AppConfig } from '@app/types/AppConfig';
 import { createBaseLogger } from '@app/utils/createBaseLogger';
 import { createCacheStore } from '@app/utils/createCacheStore';
-import { AppCache, AppLogger } from '@app/utils/tokens';
+import { AppCache, AppConfigToken, AppLogger } from '@app/utils/tokens';
 import { TaggedKeyv } from 'tagged-keyv-wrapper';
 import { container, type DependencyContainer, type InjectionToken, instanceCachingFactory } from 'tsyringe';
 import { DataSource } from 'typeorm';
@@ -30,20 +27,12 @@ export const createContainer = (config: AppConfig): DependencyContainer => {
     // create typeorm datasource
     registerFactory(DataSource, () => new DataSource(createDataSourceOptions(config)));
 
-    // Note: Services with @singleton() decorator are auto-registered by TSyringe
-    // Only manually register services that need special configuration
+    // Register AppConfig for dependency injection
+    appContainer.registerInstance(AppConfigToken, config);
 
-    registerFactory(
-        OAuthService,
-        (c) =>
-            new OAuthService(
-                c.resolve(AppLogger),
-                c.resolve(UsersRepository),
-                c.resolve(CurrentUserService),
-                config.google.clientId,
-                config.google.clientSecret
-            )
-    );
+    // Note: Services with @singleton() decorator are auto-registered by TSyringe
+    // OAuth2ClientFactory, CurrentUserService, and OAuthService are all @singleton()
+    // Only manually register services that need special configuration
 
     return appContainer;
 };

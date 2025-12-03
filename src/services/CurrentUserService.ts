@@ -1,8 +1,8 @@
 import type { UserEntity } from '@app/database/entities';
 import { UsersRepository } from '@app/database/repositories';
+import { OAuth2ClientFactory } from '@app/factories/OAuth2ClientFactory';
 import { AppCache, AppLogger } from '@app/utils/tokens';
 import type Keyv from '@keyvhq/core';
-import { google } from 'googleapis';
 import type { Logger } from 'pino';
 import { inject, singleton } from 'tsyringe';
 
@@ -11,17 +11,20 @@ export class CurrentUserService {
     protected cache: Keyv<number>;
     protected logger: Logger;
     protected userRepo: UsersRepository;
+    protected oauth2ClientFactory: OAuth2ClientFactory;
     protected cacheKey = 'current-user-id';
     protected cacheTtlMs = 60 * 60 * 24 * 7 * 1000; // 7 days
 
     constructor(
         @inject(AppLogger) logger: Logger,
         @inject(AppCache) cache: Keyv,
-        @inject(UsersRepository) userRepo: UsersRepository
+        @inject(UsersRepository) userRepo: UsersRepository,
+        @inject(OAuth2ClientFactory) oauth2ClientFactory: OAuth2ClientFactory
     ) {
         this.cache = cache;
         this.logger = logger;
         this.userRepo = userRepo;
+        this.oauth2ClientFactory = oauth2ClientFactory;
     }
 
     async getCurrentUser(): Promise<UserEntity | null> {
@@ -129,13 +132,8 @@ export class CurrentUserService {
         this.logger.debug({ userId: user.id }, 'Refreshing access token');
 
         try {
-            // Create OAuth2 client with environment credentials
-            const oauth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
-
-            // Set the refresh token
-            oauth2Client.setCredentials({
-                refresh_token: user.refreshToken,
-            });
+            // Create OAuth2 client for token refresh
+            const oauth2Client = this.oauth2ClientFactory.createForRefresh(user.refreshToken);
 
             // Refresh the access token
             const { credentials } = await oauth2Client.refreshAccessToken();
