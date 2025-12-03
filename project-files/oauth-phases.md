@@ -23,22 +23,22 @@
 #### 1. Token Encryption & Secure Storage ❌
 - **Current**: Tokens stored as plain text in database
 - **Security Risk**: Tokens visible in database dumps, logs, etc.
-- **Needed**: Encrypt/decrypt tokens using secure key management
+- **Solution**: Implement encryption/decryption for tokens using secure key management
 
 #### 2. Automatic Token Refresh ❌
 - **Current**: No automatic refresh when tokens expire
 - **Impact**: Services fail when tokens expire, manual re-authentication required
-- **Needed**: Background service to refresh tokens before expiry
+- **Solution**: Implement a background service to refresh tokens before expiry
 
 #### 3. Enhanced OAuth CLI Integration ❌
 - **Current**: Standalone `cli/auth.ts` script
 - **UX Issue**: Not integrated with main CLI, inconsistent commands
-- **Needed**: Integration with main CLI system (`bun auth` command)
+- **Solution**: Integrate with main CLI system (`bun auth` command)
 
 #### 4. Token Validation & Expiry Handling ❌
 - **Current**: No token validation or expiry checks in services
 - **Impact**: Silent failures, poor error handling
-- **Needed**: Middleware/interceptors for automatic token management
+- **Solution**: Implement middleware/interceptors for automatic token management
 
 ## Implementation Phases
 
@@ -58,17 +58,20 @@ export class TokenCryptoService {
   }
 
   encrypt(token: string): string {
-    // Use AES-256-GCM for authenticated encryption
-    const cipher = crypto.createCipher(this.algorithm, this.deriveKey());
+    const iv = crypto.randomBytes(16);
+    const key = this.deriveKey();
+    const cipher = crypto.createCipheriv(this.algorithm, key, iv);
     let encrypted = cipher.update(token, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     const authTag = cipher.getAuthTag();
-    return `${encrypted}:${authTag.toString('hex')}`;
+    return `${iv.toString('hex')}:${encrypted}:${authTag.toString('hex')}`;
   }
 
   decrypt(encryptedToken: string): string {
-    const [encrypted, authTagHex] = encryptedToken.split(':');
-    const decipher = crypto.createDecipher(this.algorithm, this.deriveKey());
+    const [ivHex, encrypted, authTagHex] = encryptedToken.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const key = this.deriveKey();
+    const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
     decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
@@ -165,11 +168,24 @@ export class OAuthService {
     }
   }
 
+  private tokenRefreshHandle: NodeJS.Timeout | null = null;
+
   async scheduleTokenRefresh(): Promise<void> {
     // Schedule periodic token refresh checks
-    setInterval(async () => {
-      await this.refreshTokensIfNeeded();
+    this.tokenRefreshHandle = setInterval(async () => {
+      try {
+        await this.refreshTokensIfNeeded();
+      } catch (error) {
+        this.logger.error(error, 'Unexpected error during scheduled token refresh');
+      }
     }, 60000); // Check every minute
+  }
+
+  cancelScheduledRefresh(): void {
+    if (this.tokenRefreshHandle) {
+      clearInterval(this.tokenRefreshHandle);
+      this.tokenRefreshHandle = null;
+    }
   }
 }
 ```
@@ -298,7 +314,7 @@ bun auth refresh   # Manual token refresh
 
 **Acceptance Criteria**:
 - [ ] Integrated `bun auth` command with subcommands
-- [ ] Consistent CLI interface and error handling
+- [ ] Consistent CLI functionality and error handling
 - [ ] Remove standalone auth script
 - [ ] Documentation for all auth commands
 
