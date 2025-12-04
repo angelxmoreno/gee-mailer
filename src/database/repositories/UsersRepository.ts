@@ -71,4 +71,16 @@ export class UsersRepository extends BaseRepositoryService<UserEntity> {
     async findByEmail(email: string): Promise<UserEntity | null> {
         return this.repository.findOne({ where: { email } });
     }
+
+    async clearTokens(userId: number): Promise<void> {
+        const result = await this.repository.update(userId, {
+            accessToken: null,
+            refreshToken: null,
+            tokenExpiryDate: null,
+        });
+
+        if (result.affected === 0) {
+            throw new Error(`User with ID ${userId} not found or no tokens to clear.`);
+        }
+    }
 }
