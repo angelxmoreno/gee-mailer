@@ -164,7 +164,6 @@ TOKEN_ENCRYPTION_SECRET=your-base64-encoded-secret-here
 @singleton()
 export class TokenRefreshService {
   private oauth2ClientFactory: OAuth2ClientFactory;
-  private tokenRefreshHandle: NodeJS.Timeout | null = null;
 
   constructor(
     @inject(UsersRepository) private userRepo: UsersRepository,
@@ -176,16 +175,11 @@ export class TokenRefreshService {
 
   async refreshTokensIfNeeded(userId: number): Promise<boolean> {
     const user = await this.userRepo.findById(userId);
-    if (!user?.refreshToken || !user?.tokenExpiryDate) {
+    if (!user?.refreshToken) {
       return false;
     }
 
-    // Refresh if token expires within 5 minutes
-    const expiryBuffer = 5 * 60 * 1000; // 5 minutes in ms
-    const now = new Date();
-    const expiryWithBuffer = new Date(user.tokenExpiryDate.getTime() - expiryBuffer);
-
-    if (now >= expiryWithBuffer) {
+    if (this.isUserTokenExpiringSoon(user, 5)) {
       return await this.refreshAccessToken(userId);
     }
 
@@ -220,7 +214,15 @@ export class TokenRefreshService {
 
   async isTokenExpiringSoon(userId: number, bufferMinutes = 5): Promise<boolean> {
     const user = await this.userRepo.findById(userId);
-    if (!user?.tokenExpiryDate) return true; // Assume expired if no expiry date
+    if (!user) return true; // Assume expired if user not found
+    return this.isUserTokenExpiringSoon(user, bufferMinutes);
+  }
+
+  /**
+   * Checks if a user's token is expiring soon (private helper to avoid code duplication)
+   */
+  private isUserTokenExpiringSoon(user: UserEntity, bufferMinutes = 5): boolean {
+    if (!user.tokenExpiryDate) return true; // Assume expired if no expiry date
 
     const expiryBuffer = bufferMinutes * 60 * 1000;
     const now = new Date();
@@ -229,28 +231,9 @@ export class TokenRefreshService {
     return now >= expiryWithBuffer;
   }
 
-  // Background refresh scheduling
-  async scheduleTokenRefresh(): Promise<void> {
-    this.tokenRefreshHandle = setInterval(async () => {
-      try {
-        // Get all users with tokens and refresh if needed
-        const usersWithTokens = await this.userRepo.findUsersWithRefreshTokens();
-
-        for (const user of usersWithTokens) {
-          await this.refreshTokensIfNeeded(user.id);
-        }
-      } catch (error) {
-        this.logger.error(error, 'Unexpected error during scheduled token refresh');
-      }
-    }, 60000); // Check every minute
-  }
-
-  cancelScheduledRefresh(): void {
-    if (this.tokenRefreshHandle) {
-      clearInterval(this.tokenRefreshHandle);
-      this.tokenRefreshHandle = null;
-    }
-  }
+  // Note: Token refresh is on-demand only for the current active user
+  // Background refresh scheduling for all users is not needed
+  // as this follows a single-user workflow pattern
 }
 ```
 

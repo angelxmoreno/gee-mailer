@@ -1,3 +1,4 @@
+import type { UserEntity } from '@app/database/entities';
 import type { AppConfig } from '@app/types/AppConfig';
 import { AppConfigToken, AppLogger } from '@app/utils/tokens';
 import { type Auth, google } from 'googleapis';
@@ -92,6 +93,27 @@ export class OAuth2ClientFactory {
         });
 
         this.logger.debug('Created OAuth2Client for token refresh');
+
+        return oauth2Client;
+    }
+
+    /**
+     * Creates OAuth2Client with complete user credentials (for Gmail API operations)
+     */
+    createForApiCalls(user: UserEntity): OAuth2Client {
+        const oauth2Client = this.createApiClient();
+
+        if (!user.accessToken) {
+            throw new Error('User has no access token - authentication required');
+        }
+
+        oauth2Client.setCredentials({
+            access_token: user.accessToken,
+            refresh_token: user.refreshToken || undefined,
+            expiry_date: user.tokenExpiryDate?.getTime() || undefined,
+        });
+
+        this.logger.debug({ userId: user.id }, 'Created OAuth2Client for API calls');
 
         return oauth2Client;
     }

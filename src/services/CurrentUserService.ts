@@ -1,6 +1,6 @@
 import type { UserEntity } from '@app/database/entities';
 import { UsersRepository } from '@app/database/repositories';
-import { OAuth2ClientFactory } from '@app/factories/OAuth2ClientFactory';
+import { TokenRefreshService } from '@app/services/TokenRefreshService';
 import { AppCache, AppLogger } from '@app/utils/tokens';
 import type Keyv from '@keyvhq/core';
 import type { Logger } from 'pino';
@@ -11,7 +11,7 @@ export class CurrentUserService {
     protected cache: Keyv<number>;
     protected logger: Logger;
     protected userRepo: UsersRepository;
-    protected oauth2ClientFactory: OAuth2ClientFactory;
+    protected tokenRefreshService: TokenRefreshService;
     protected cacheKey = 'current-user-id';
     protected cacheTtlMs = 60 * 60 * 24 * 7 * 1000; // 7 days
 
@@ -19,12 +19,12 @@ export class CurrentUserService {
         @inject(AppLogger) logger: Logger,
         @inject(AppCache) cache: Keyv,
         @inject(UsersRepository) userRepo: UsersRepository,
-        @inject(OAuth2ClientFactory) oauth2ClientFactory: OAuth2ClientFactory
+        @inject(TokenRefreshService) tokenRefreshService: TokenRefreshService
     ) {
         this.cache = cache;
         this.logger = logger;
         this.userRepo = userRepo;
-        this.oauth2ClientFactory = oauth2ClientFactory;
+        this.tokenRefreshService = tokenRefreshService;
     }
 
     async getCurrentUser(): Promise<UserEntity | null> {
@@ -85,7 +85,7 @@ export class CurrentUserService {
     }
 
     /**
-     * Gets the current user and validates their tokens are not expired
+     * Gets the current user and ensures their tokens are valid (refreshes if needed)
      */
     async getCurrentUserWithValidToken(): Promise<UserEntity> {
         const currentUser = await this.getCurrentUserOrFail();
@@ -94,70 +94,14 @@ export class CurrentUserService {
             throw new Error('Current user has no access token');
         }
 
-        // Check if token needs refresh (expires within 5 minutes) or is already expired
-        if (this.shouldRefreshToken(currentUser)) {
-            if (!currentUser.refreshToken) {
-                throw new Error('Access token has expired and cannot be refreshed. Please re-authenticate.');
-            }
-            return this.refreshUserToken(currentUser);
+        // Use TokenRefreshService to refresh if needed
+        const refreshSuccessful = await this.tokenRefreshService.refreshTokensIfNeeded(currentUser.id);
+
+        if (!refreshSuccessful) {
+            throw new Error('Access token has expired and cannot be refreshed. Please re-authenticate.');
         }
 
-        return currentUser;
-    }
-
-    /**
-     * Determines if the user's access token should be refreshed
-     */
-    protected shouldRefreshToken(user: UserEntity): boolean {
-        if (!user.tokenExpiryDate) {
-            return false;
-        }
-
-        const expiryDate =
-            typeof user.tokenExpiryDate === 'string' ? new Date(user.tokenExpiryDate) : user.tokenExpiryDate;
-
-        // Refresh if token is expired or expires within 5 minutes
-        const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
-        return expiryDate <= fiveMinutesFromNow;
-    }
-
-    /**
-     * Refreshes the user's access token using the refresh token
-     */
-    protected async refreshUserToken(user: UserEntity): Promise<UserEntity> {
-        if (!user.refreshToken) {
-            throw new Error('No refresh token available for user');
-        }
-
-        this.logger.debug({ userId: user.id }, 'Refreshing access token');
-
-        try {
-            // Create OAuth2 client for token refresh
-            const oauth2Client = this.oauth2ClientFactory.createForRefresh(user.refreshToken);
-
-            // Refresh the access token
-            const { credentials } = await oauth2Client.refreshAccessToken();
-
-            // Update user with new token information
-            const updatedUser = await this.userRepo.repository.save({
-                ...user,
-                accessToken: credentials.access_token || user.accessToken,
-                refreshToken: credentials.refresh_token || user.refreshToken,
-                tokenExpiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : user.tokenExpiryDate,
-            });
-
-            this.logger.info({ userId: user.id }, 'Access token refreshed successfully');
-
-            return updatedUser;
-        } catch (error) {
-            this.logger.error(
-                {
-                    userId: user.id,
-                    error: error instanceof Error ? error.message : String(error),
-                },
-                'Failed to refresh access token'
-            );
-            throw new Error('Failed to refresh access token. Please re-authenticate.');
-        }
+        // Return fresh user data (tokens may have been updated)
+        return await this.userRepo.findByIdOrFail(currentUser.id);
     }
 }
