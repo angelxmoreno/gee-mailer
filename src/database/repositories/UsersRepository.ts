@@ -73,10 +73,14 @@ export class UsersRepository extends BaseRepositoryService<UserEntity> {
     }
 
     async clearTokens(userId: number): Promise<void> {
-        await this.repository.update(userId, {
+        const result = await this.repository.update(userId, {
             accessToken: null,
             refreshToken: null,
             tokenExpiryDate: null,
         });
+
+        if (result.affected === 0) {
+            throw new Error(`User with ID ${userId} not found or no tokens to clear.`);
+        }
     }
 }
