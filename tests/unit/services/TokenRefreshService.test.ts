@@ -258,7 +258,7 @@ describe('TokenRefreshService', () => {
     });
 
     describe('private helper: isUserTokenExpiringSoon', () => {
-        test('should handle edge case of exact expiry time', () => {
+        test('should handle edge case of exact expiry time', async () => {
             const now = new Date();
             const userWithExactExpiry = {
                 ...mockUser,
@@ -277,13 +277,20 @@ describe('TokenRefreshService', () => {
                 }
             } as DateConstructor;
 
-            (mockUserRepo.findById as jest.Mock).mockResolvedValue(userWithExactExpiry);
+            try {
+                (mockUserRepo.findById as jest.Mock).mockResolvedValue(userWithExactExpiry);
 
-            // This should test the boundary condition
-            const _service = new TokenRefreshService(mockUserRepo, mockLogger, mockOAuth2ClientFactory);
+                const service = new TokenRefreshService(mockUserRepo, mockLogger, mockOAuth2ClientFactory);
 
-            // Restore original Date
-            global.Date = originalDate;
+                // Test the boundary condition - exactly 5 minutes should be considered expiring soon
+                const result = await service.isTokenExpiringSoon(1, 5);
+                expect(result).toBe(true); // 5-minute buffer means exactly 5 minutes = expiring soon
+
+                expect(mockUserRepo.findById).toHaveBeenCalledWith(1);
+            } finally {
+                // Ensure Date mock is always cleaned up
+                global.Date = originalDate;
+            }
         });
     });
 });
