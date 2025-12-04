@@ -71,4 +71,12 @@ export class UsersRepository extends BaseRepositoryService<UserEntity> {
     async findByEmail(email: string): Promise<UserEntity | null> {
         return this.repository.findOne({ where: { email } });
     }
+
+    async clearTokens(userId: number): Promise<void> {
+        await this.repository.update(userId, {
+            accessToken: null,
+            refreshToken: null,
+            tokenExpiryDate: null,
+        });
+    }
 }
