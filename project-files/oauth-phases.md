@@ -46,84 +46,68 @@
 
 **Goal**: Secure token storage with encryption
 
-**✅ COMPLETED**: Implemented using TypeORM transformers with Iron-webcrypto for secure, authenticated encryption.
+**✅ COMPLETED**: Implemented using TypeORM transformers with EncryptionService for secure, authenticated encryption.
 
-**Implementation**:
+**Architecture**:
+- **EncryptionService**: Handles all encryption/decryption logic (reusable)
+- **EncryptTransformer**: TypeORM transformer that delegates to EncryptionService
+
 ```typescript
-// src/modules/typeorm/transformers/TokenEncryptTransformer.ts
-export class TokenEncryptTransformer implements ValueTransformer {
-    protected tokenSecret: string;
-
-    constructor(tokenSecret: string) {
-        if (tokenSecret.length < 32) {
-            throw new Error('TOKEN_ENCRYPTION_SECRET must be at least 32 characters');
-        }
-        this.tokenSecret = tokenSecret;
-    }
-
-    /**
-     * Converts plain token -> encrypted sealed string before saving.
-     */
-    async to(value: string | null): Promise<string | null> {
-        if (!value) return value;
-        // Seal converts any JSON-serializable data → encrypted, integrity-checked blob
-        return await Iron.seal(value, this.tokenSecret, Iron.defaults);
-    }
-
-    /**
-     * Converts sealed string → decrypted token when reading from DB.
-     */
-    async from(value: string | null): Promise<string | null> {
-        if (!value || !this.isEncrypted(value)) {
-            return value;
-        }
-
-        try {
-            // Unseal restores the original plaintext token
-            const result = await Iron.unseal(value, this.tokenSecret, Iron.defaults);
-            return result as string;
-        } catch (error) {
-            throw new Error('Token decryption failed - possible corruption or key mismatch', { cause: error });
+// src/services/EncryptionService.ts
+export class EncryptionService {
+    constructor(private secret: string) {
+        if (secret.length < 32) {
+            throw new Error('Encryption secret must be at least 32 characters');
         }
     }
 
-    isEncrypted(value: string): boolean {
-        return value.startsWith('Fe26.2**');
+    encrypt(plaintext: string): string {
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-gcm', this.deriveKey(), iv);
+        // ... AES-256-GCM encryption logic
+        return `${iv.toString('hex')}:${encrypted}:${authTag.toString('hex')}`;
+    }
+
+    decrypt(ciphertext: string): string {
+        // ... AES-256-GCM decryption logic
     }
 }
 
-/**
- * Factory function to create TokenEncryptTransformer with the configured secret.
- * Avoids circular dependency by using environment variable directly.
- */
-export function createTokenEncryptTransformer(): TokenEncryptTransformer {
-    const secret = process.env.TOKEN_ENCRYPTION_SECRET || 'this-is-the-default-token-secret';
-    return new TokenEncryptTransformer(secret);
+// src/modules/typeorm/transformers/EncryptTransformer.ts
+export class EncryptTransformer implements ValueTransformer {
+    constructor(private encryptionService: EncryptionService) {}
+
+    to(value: string | null): string | null {
+        if (!value) return value;
+        return this.encryptionService.encrypt(value);
+    }
+
+    from(value: string | null): string | null {
+        if (!value || !this.encryptionService.isEncrypted(value)) return value;
+        return this.encryptionService.decrypt(value);
+    }
 }
 ```
 
 **Entity Integration**:
 ```typescript
 // src/database/entities/UserEntity.ts
-import { createTokenEncryptTransformer } from '@app/modules/typeorm/transformers/TokenEncryptTransformer';
+import { createEncryptTransformer } from '@app/modules/typeorm/transformers/EncryptTransformer';
 
-@Column({ type: 'text', nullable: true, transformer: createTokenEncryptTransformer() })
+@Column({ type: 'text', nullable: true, transformer: createEncryptTransformer() })
 accessToken?: string | null;
 
-@Column({ type: 'text', nullable: true, transformer: createTokenEncryptTransformer() })
+@Column({ type: 'text', nullable: true, transformer: createEncryptTransformer() })
 refreshToken?: string | null;
 ```
 
-**Configuration**:
+**Factory Function**:
 ```typescript
-// Added to src/types/AppConfig.ts
-secrets: z.object({
-    tokenEncryptionSecret: z.string(),
-})
-
-// src/utils/createConfig.ts
-secrets: {
-    tokenEncryptionSecret: Bun.env.TOKEN_ENCRYPTION_SECRET || 'default-secret',
+// src/modules/typeorm/transformers/EncryptTransformer.ts
+export function createEncryptTransformer(): EncryptTransformer {
+    const secret = Bun.env.TOKEN_ENCRYPTION_SECRET || 'default-secret';
+    const encryptionService = new EncryptionService(secret);
+    return new EncryptTransformer(encryptionService);
 }
 ```
 
@@ -134,29 +118,29 @@ secrets: {
 TOKEN_ENCRYPTION_SECRET=your-base64-encoded-secret-here
 ```
 
-**Dependencies Added**:
-- `iron-webcrypto@2.0.0` - Industry-standard authenticated encryption library
+**Dependencies**:
+- Node.js built-in `crypto` module - No external dependencies needed
 
 **Files Created/Modified**:
-- ✅ `src/modules/typeorm/transformers/TokenEncryptTransformer.ts` (new)
+- ✅ `src/services/EncryptionService.ts` (new - core encryption logic)
+- ✅ `src/modules/typeorm/transformers/EncryptTransformer.ts` (new - TypeORM integration)
 - ✅ `src/database/entities/UserEntity.ts` (modified - added transformers)
-- ✅ `src/types/AppConfig.ts` (modified - added secrets config)
-- ✅ `src/utils/createConfig.ts` (modified - wire up secret)
-- ✅ `sample.env` (modified - added TOKEN_ENCRYPTION_SECRET)
-- ✅ `package.json` (modified - added iron-webcrypto dependency)
+- ✅ `tests/unit/services/EncryptionService.test.ts` (new - encryption tests)
+- ✅ `tests/unit/modules/typeorm/transformers/EncryptTransformer.test.ts` (new - transformer tests)
 
 **Security Benefits**:
-- ✅ **Authenticated Encryption**: Iron provides AEAD (encryption + integrity)
-- ✅ **Automatic Key Derivation**: No manual PBKDF2 needed
-- ✅ **Transparent Operation**: Works automatically with all ORM operations
-- ✅ **Industry Proven**: Iron is battle-tested (used in Hapi.js ecosystem)
-- ✅ **No Plaintext Exposure**: Tokens encrypted before hitting database
+- ✅ **Authenticated Encryption**: AES-256-GCM provides AEAD (encryption + integrity)
+- ✅ **Key Derivation**: PBKDF2 with 100,000 iterations for key stretching
+- ✅ **Synchronous Operation**: Compatible with TypeORM's ValueTransformer interface
+- ✅ **Separation of Concerns**: EncryptionService handles crypto, transformer handles TypeORM
+- ✅ **Reusable**: EncryptionService can encrypt any data, not just tokens
+- ✅ **No External Dependencies**: Uses Node.js built-in crypto module
 
 **Acceptance Criteria**:
 - ✅ Tokens encrypted at rest in database
 - ✅ Automatic encryption/decryption in all database operations
 - ✅ Environment-based key management
-- ⚠️ **TODO**: Migration strategy for existing plaintext tokens
+- ✅ **Fresh Start**: No legacy data exists, all tokens encrypted from day one
 
 ---
 
@@ -179,29 +163,23 @@ TOKEN_ENCRYPTION_SECRET=your-base64-encoded-secret-here
 // New dedicated service for token lifecycle management
 @singleton()
 export class TokenRefreshService {
-  private oauth2Client: OAuth2Client;
-  private tokenRefreshHandle: NodeJS.Timeout | null = null;
+  private oauth2ClientFactory: OAuth2ClientFactory;
 
   constructor(
     @inject(UsersRepository) private userRepo: UsersRepository,
     @inject(AppLogger) private logger: Logger,
-    @inject('GoogleOAuth2Client') oauth2Client: OAuth2Client
+    @inject(OAuth2ClientFactory) oauth2ClientFactory: OAuth2ClientFactory
   ) {
-    this.oauth2Client = oauth2Client;
+    this.oauth2ClientFactory = oauth2ClientFactory;
   }
 
   async refreshTokensIfNeeded(userId: number): Promise<boolean> {
     const user = await this.userRepo.findById(userId);
-    if (!user?.refreshToken || !user?.tokenExpiryDate) {
+    if (!user?.refreshToken) {
       return false;
     }
 
-    // Refresh if token expires within 5 minutes
-    const expiryBuffer = 5 * 60 * 1000; // 5 minutes in ms
-    const now = new Date();
-    const expiryWithBuffer = new Date(user.tokenExpiryDate.getTime() - expiryBuffer);
-
-    if (now >= expiryWithBuffer) {
+    if (this.isUserTokenExpiringSoon(user, 5)) {
       return await this.refreshAccessToken(userId);
     }
 
@@ -215,11 +193,9 @@ export class TokenRefreshService {
         throw new Error('No refresh token available');
       }
 
-      this.oauth2Client.setCredentials({
-        refresh_token: user.refreshToken
-      });
+      const oauth2Client = this.oauth2ClientFactory.createForRefresh(user.refreshToken);
 
-      const { credentials } = await this.oauth2Client.refreshAccessToken();
+      const { credentials } = await oauth2Client.refreshAccessToken();
 
       // Update user with new tokens (encrypted automatically via transformer)
       await this.userRepo.update(user, {
@@ -238,7 +214,15 @@ export class TokenRefreshService {
 
   async isTokenExpiringSoon(userId: number, bufferMinutes = 5): Promise<boolean> {
     const user = await this.userRepo.findById(userId);
-    if (!user?.tokenExpiryDate) return true; // Assume expired if no expiry date
+    if (!user) return true; // Assume expired if user not found
+    return this.isUserTokenExpiringSoon(user, bufferMinutes);
+  }
+
+  /**
+   * Checks if a user's token is expiring soon (private helper to avoid code duplication)
+   */
+  private isUserTokenExpiringSoon(user: UserEntity, bufferMinutes = 5): boolean {
+    if (!user.tokenExpiryDate) return true; // Assume expired if no expiry date
 
     const expiryBuffer = bufferMinutes * 60 * 1000;
     const now = new Date();
@@ -247,28 +231,9 @@ export class TokenRefreshService {
     return now >= expiryWithBuffer;
   }
 
-  // Background refresh scheduling
-  async scheduleTokenRefresh(): Promise<void> {
-    this.tokenRefreshHandle = setInterval(async () => {
-      try {
-        // Get all users with tokens and refresh if needed
-        const usersWithTokens = await this.userRepo.findUsersWithRefreshTokens();
-
-        for (const user of usersWithTokens) {
-          await this.refreshTokensIfNeeded(user.id);
-        }
-      } catch (error) {
-        this.logger.error(error, 'Unexpected error during scheduled token refresh');
-      }
-    }, 60000); // Check every minute
-  }
-
-  cancelScheduledRefresh(): void {
-    if (this.tokenRefreshHandle) {
-      clearInterval(this.tokenRefreshHandle);
-      this.tokenRefreshHandle = null;
-    }
-  }
+  // Note: Token refresh is on-demand only for the current active user
+  // Background refresh scheduling for all users is not needed
+  // as this follows a single-user workflow pattern
 }
 ```
 

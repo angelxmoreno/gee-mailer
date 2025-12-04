@@ -2,11 +2,14 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
 import type { UserEntity } from '@app/database/entities';
-import type { UsersRepository } from '@app/database/repositories';
-import type { CurrentUserService } from '@app/services/CurrentUserService';
+import { UsersRepository } from '@app/database/repositories';
+import { OAuth2ClientFactory } from '@app/factories/OAuth2ClientFactory';
+import { CurrentUserService } from '@app/services/CurrentUserService';
+import { AppLogger } from '@app/utils/tokens';
 import { type Auth, google } from 'googleapis';
 import open from 'open';
 import type { Logger } from 'pino';
+import { inject, singleton } from 'tsyringe';
 
 export type OAuth2Client = Auth.OAuth2Client;
 export type Credentials = Auth.Credentials;
@@ -23,6 +26,7 @@ export interface GoogleUserInfo {
     picture?: string;
 }
 
+@singleton()
 export class OAuthService {
     protected activeState?: string;
     protected oauth2Client: OAuth2Client;
@@ -39,42 +43,15 @@ export class OAuthService {
     protected callbackPort = 3000;
 
     constructor(
-        logger: Logger,
-        userRepo: UsersRepository,
-        currentUserService: CurrentUserService,
-        clientId: string,
-        clientSecret: string
+        @inject(AppLogger) logger: Logger,
+        @inject(UsersRepository) userRepo: UsersRepository,
+        @inject(CurrentUserService) currentUserService: CurrentUserService,
+        @inject(OAuth2ClientFactory) oauth2ClientFactory: OAuth2ClientFactory
     ) {
         this.logger = logger;
         this.userRepo = userRepo;
         this.currentUserService = currentUserService;
-        this.oauth2Client = this.createOauth2Client(clientId, clientSecret);
-    }
-
-    protected createOauth2Client(clientId: string, clientSecret: string): OAuth2Client {
-        const options = {
-            clientId,
-            clientSecret,
-            redirectUri: `http://127.0.0.1:${this.callbackPort}/oauth2callback`,
-        };
-        this.logger.debug(
-            {
-                ...options,
-                clientSecret: '*********************',
-            },
-            'creating OAuth2Client'
-        );
-        const oauth2Client = new google.auth.OAuth2(options);
-
-        oauth2Client.on('tokens', (tokens) => {
-            if (tokens.refresh_token) {
-                this.logger.info(tokens, 'refresh token detected');
-            } else {
-                this.logger.info(tokens, 'no refresh token detected');
-            }
-        });
-
-        return oauth2Client;
+        this.oauth2Client = oauth2ClientFactory.createAuthorizationClient(this.callbackPort);
     }
 
     /**
