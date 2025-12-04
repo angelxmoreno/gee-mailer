@@ -312,7 +312,7 @@ export class TokenRefreshService {
 
     const now = new Date();
 
-    const expiryWithBuffer = new Date(user.tokenExpirydate.getTime() - expiryBuffer);
+    const expiryWithBuffer = new Date(user.tokenExpiryDate.getTime() - expiryBuffer);
 
 
 
