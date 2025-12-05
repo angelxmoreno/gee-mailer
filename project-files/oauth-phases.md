@@ -144,523 +144,706 @@ TOKEN_ENCRYPTION_SECRET=your-base64-encoded-secret-here
 
 ---
 
-### Phase 2: Automatic Token Refresh (Critical Priority)
+### Phase 2: Automatic Token Refresh (Critical Priority) ✅
 
-**Goal**: Automatic token refresh before expiry with clean separation of concerns
+
+
+**Goal**: Automatic token refresh before expiry with clean separation of concerns.
+
+
+
+**✅ COMPLETED**: Implemented using a dedicated `TokenRefreshService` for clean separation of concerns and on-demand token refreshing.
+
+
 
 **Architecture Decision**: Create dedicated `TokenRefreshService` to avoid coupling issues and improve reusability.
 
+
+
 **Problem with Current Approach**:
+
 - OAuthService mixing OAuth flows with token lifecycle management
+
 - GmailService → OAuthService → CurrentUserService creates tight coupling
+
 - CurrentUserService can't refresh tokens independently
+
 - Token refresh logic locked inside OAuthService
+
+
 
 **Solution**: Dedicated `TokenRefreshService` that both CurrentUserService and OAuthService can use.
 
+
+
 **Implementation**:
+
 ```typescript
+
 // New dedicated service for token lifecycle management
+
 @singleton()
+
 export class TokenRefreshService {
+
   private oauth2ClientFactory: OAuth2ClientFactory;
 
+
+
   constructor(
+
     @inject(UsersRepository) private userRepo: UsersRepository,
+
     @inject(AppLogger) private logger: Logger,
+
     @inject(OAuth2ClientFactory) oauth2ClientFactory: OAuth2ClientFactory
+
   ) {
+
     this.oauth2ClientFactory = oauth2ClientFactory;
+
   }
+
+
 
   async refreshTokensIfNeeded(userId: number): Promise<boolean> {
+
     const user = await this.userRepo.findById(userId);
+
     if (!user?.refreshToken) {
+
       return false;
+
     }
+
+
 
     if (this.isUserTokenExpiringSoon(user, 5)) {
+
       return await this.refreshAccessToken(userId);
+
     }
 
+
+
     return true; // Token is still valid
+
   }
 
+
+
   async refreshAccessToken(userId: number): Promise<boolean> {
+
     try {
+
       const user = await this.userRepo.findByIdOrFail(userId);
+
       if (!user.refreshToken) {
+
         throw new Error('No refresh token available');
+
       }
+
+
 
       const oauth2Client = this.oauth2ClientFactory.createForRefresh(user.refreshToken);
 
+
+
       const { credentials } = await oauth2Client.refreshAccessToken();
 
+
+
       // Update user with new tokens (encrypted automatically via transformer)
+
       await this.userRepo.update(user, {
+
         accessToken: credentials.access_token!,
+
         tokenExpiryDate: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
+
         refreshToken: credentials.refresh_token || user.refreshToken,
+
       });
 
+
+
       this.logger.info({ userId }, 'Tokens refreshed successfully');
+
       return true;
+
     } catch (error) {
+
       this.logger.error({ userId, error }, 'Failed to refresh tokens');
+
       return false;
+
     }
+
   }
+
+
 
   async isTokenExpiringSoon(userId: number, bufferMinutes = 5): Promise<boolean> {
+
     const user = await this.userRepo.findById(userId);
+
     if (!user) return true; // Assume expired if user not found
+
     return this.isUserTokenExpiringSoon(user, bufferMinutes);
+
   }
+
+
 
   /**
+
    * Checks if a user's token is expiring soon (private helper to avoid code duplication)
+
    */
+
   private isUserTokenExpiringSoon(user: UserEntity, bufferMinutes = 5): boolean {
+
     if (!user.tokenExpiryDate) return true; // Assume expired if no expiry date
 
+
+
     const expiryBuffer = bufferMinutes * 60 * 1000;
+
     const now = new Date();
+
     const expiryWithBuffer = new Date(user.tokenExpiryDate.getTime() - expiryBuffer);
 
+
+
     return now >= expiryWithBuffer;
+
   }
 
-  // Note: Token refresh is on-demand only for the current active user
-  // Background refresh scheduling for all users is not needed
-  // as this follows a single-user workflow pattern
 }
+
 ```
+
+
 
 **Enhanced CurrentUserService**:
+
 ```typescript
+
 export class CurrentUserService {
+
   constructor(
+
     @inject(TokenRefreshService) private tokenRefreshService: TokenRefreshService,
+
     @inject(UsersRepository) private userRepo: UsersRepository
+
   ) {}
+
+
 
   // New method that guarantees fresh tokens
+
   async getCurrentUserWithValidToken(): Promise<UserEntity> {
+
     const user = await this.getCurrentUserOrFail();
+
     const isValid = await this.tokenRefreshService.refreshTokensIfNeeded(user.id);
 
+
+
     if (!isValid) {
+
       throw new Error('Authentication required - please run: bun auth login');
+
     }
 
+
+
     // Return fresh user data (tokens may have been updated)
+
     return await this.userRepo.findByIdOrFail(user.id);
+
   }
+
+
 
   // Existing methods remain unchanged
+
   async getCurrentUser(): Promise<UserEntity | null> { /* existing */ }
+
   async getCurrentUserOrFail(): Promise<UserEntity> { /* existing */ }
+
 }
+
 ```
+
+
 
 **Simplified OAuthService**:
+
 ```typescript
+
 export class OAuthService {
+
   constructor(
+
     @inject(TokenRefreshService) private tokenRefreshService: TokenRefreshService
+
   ) {}
+
+
 
   // OAuth flow methods (login, callback, etc.)
+
   async login(): Promise<string> { /* OAuth flow logic */ }
+
   async handleCallback(code: string): Promise<UserEntity> { /* OAuth callback */ }
 
+
+
   // Delegates token refresh to TokenRefreshService
+
   async refreshTokensIfNeeded(userId: number): Promise<boolean> {
+
     return await this.tokenRefreshService.refreshTokensIfNeeded(userId);
+
   }
+
 }
+
 ```
+
+
 
 **Clean GmailService Integration**:
+
 ```typescript
+
 export class GmailService {
+
   constructor(
+
     @inject(CurrentUserService) private currentUserService: CurrentUserService
+
   ) {}
 
+
+
   // All API methods automatically get fresh tokens
+
   async fetchMessageList(pageToken?: string): Promise<MessageListResponse> {
+
     const user = await this.currentUserService.getCurrentUserWithValidToken();
+
+
 
     // Tokens are guaranteed to be fresh - proceed with API call
+
     const gmail = this.createGmailClient(user);
+
     return await gmail.users.messages.list({ userId: 'me', pageToken });
+
   }
+
+
 
   async fetchMessage(messageId: string): Promise<MessageData> {
+
     const user = await this.currentUserService.getCurrentUserWithValidToken();
 
+
+
     // No need for manual token validation
+
     const gmail = this.createGmailClient(user);
+
     return await gmail.users.messages.get({ userId: 'me', id: messageId });
+
   }
+
 }
+
 ```
 
+
+
 **Architecture Benefits**:
+
 - ✅ **Clean separation**: Token lifecycle separate from OAuth flows
+
 - ✅ **Improved reusability**: Any service can refresh tokens via CurrentUserService
+
 - ✅ **Reduced coupling**: GmailService no longer depends on OAuthService
+
 - ✅ **Better testability**: Each service has focused responsibilities
+
 - ✅ **Enhanced maintainability**: Token logic centralized in one place
 
-**Files to Create/Modify**:
-- `src/services/TokenRefreshService.ts` (new - dedicated token lifecycle management)
-- `src/services/CurrentUserService.ts` (modify - add getCurrentUserWithValidToken method)
-- `src/services/GmailService.ts` (modify - use CurrentUserService for token validation)
-- `src/services/OAuthService.ts` (modify - delegate token refresh to TokenRefreshService)
-- `src/database/repositories/UsersRepository.ts` (modify - add findUsersWithRefreshTokens method)
-- `src/utils/createContainer.ts` (modify - register TokenRefreshService and OAuth2Client)
 
-**Acceptance Criteria**:
-- [ ] TokenRefreshService handles all token lifecycle operations
-- [ ] CurrentUserService provides getCurrentUserWithValidToken() method
-- [ ] All API services automatically get fresh tokens via CurrentUserService
-- [ ] Background scheduler refreshes tokens for all users
-- [ ] Graceful handling of refresh failures with clear error messages
-- [ ] OAuthService focuses only on OAuth flows, delegates token management
-- [ ] Clean dependency injection with proper service separation
+
+**Note on Background Refresh**: Token refresh is handled on-demand for the current active user. A background refresh process for all users was not implemented, as it does not align with the project's single-user, CLI-driven workflow.
+
+
+
+**Files Created/Modified**:
+
+- ✅ `src/services/TokenRefreshService.ts` (new - dedicated token lifecycle management)
+
+- ✅ `src/services/CurrentUserService.ts` (modify - add getCurrentUserWithValidToken method)
+
+- ✅ `src/services/GmailService.ts` (modify - use CurrentUserService for token validation)
+
+- ✅ `src/services/OAuthService.ts` (modify - delegate token refresh to TokenRefreshService)
+
+- ✅ `src/database/repositories/UsersRepository.ts` (modify - add findUsersWithRefreshTokens method)
+
+- ✅ `src/utils/createContainer.ts` (modify - register TokenRefreshService and OAuth2Client)
+
+
 
 ---
+
+
 
 ### Phase 3: Enhanced OAuth CLI Integration (Medium Priority) ✅
 
+
+
 **Goal**: Integrated CLI commands for OAuth management
+
+
 
 **✅ COMPLETED**: Implemented centralized CLI system with OAuth authentication management commands.
 
+
+
 **Implementation**:
+
 ```typescript
+
 // Add to main CLI system
+
 // src/cli/commands/auth.ts
+
 export const authCommand = {
+
   name: 'auth',
+
   description: 'OAuth authentication management',
+
   subcommands: {
+
     login: {
+
       description: 'Authenticate with Google OAuth',
+
       handler: async () => {
+
         const oauth = appContainer.resolve(OAuthService);
+
         await oauth.authorizeAndSaveUser();
+
         console.log('✅ Authentication successful!');
+
       }
+
     },
+
+
 
     logout: {
+
       description: 'Clear authentication tokens',
+
       handler: async () => {
+
         const userRepo = appContainer.resolve(UsersRepository);
+
         const currentUser = appContainer.resolve(CurrentUserService);
 
+
+
         const user = await currentUser.getCurrentUser();
+
         if (user) {
+
           await userRepo.clearTokens(user.id);
+
           await currentUser.clearCurrentUser();
+
           console.log('✅ Logged out successfully');
+
         } else {
+
           console.log('ℹ️  No user currently authenticated');
+
         }
+
       }
+
     },
+
+
 
     status: {
+
       description: 'Check authentication status',
+
       handler: async () => {
+
         const currentUser = appContainer.resolve(CurrentUserService);
+
         const oauth = appContainer.resolve(OAuthService);
+
+
 
         const user = await currentUser.getCurrentUser();
+
         if (!user) {
+
           console.log('❌ Not authenticated');
+
           return;
+
         }
+
+
 
         const hasValidTokens = await oauth.refreshTokensIfNeeded();
+
         console.log(`✅ Authenticated as: ${user.email}`);
+
         console.log(`🔑 Tokens: ${hasValidTokens ? 'Valid' : 'Expired/Invalid'}`);
+
         console.log(`📅 Token expires: ${user.tokenExpiryDate || 'Unknown'}`);
+
       }
+
     },
 
+
+
     refresh: {
+
       description: 'Manually refresh authentication tokens',
+
       handler: async () => {
+
         const oauth = appContainer.resolve(OAuthService);
+
         const success = await oauth.refreshAccessToken();
 
+
+
         if (success) {
+
           console.log('✅ Tokens refreshed successfully');
+
         } else {
+
           console.log('❌ Failed to refresh tokens - please login again');
+
         }
+
       }
+
     }
+
   }
+
 };
+
 ```
+
+
 
 **Actual Implementation**:
 
+
+
 **Architecture**: Created centralized CLI system with modular command structure and proper TypeScript types.
 
+
+
 ```typescript
+
 // src/cli/commands/auth.ts - Comprehensive auth command implementation
+
 export const authCommands: Record<string, AuthCommand> = {
+
     login: {
+
         name: 'login',
+
         description: 'Authenticate with Google OAuth',
+
         handler: async () => {
+
             // Full OAuth flow with user feedback and error handling
+
             const result = await oauth.authorizeAndSaveUser();
+
             await currentUser.setCurrentUser(result.user);
+
             console.log('✅ Authentication successful!');
+
         }
+
     },
+
     logout: {
+
         name: 'logout',
+
         description: 'Clear authentication tokens',
+
         handler: async () => {
+
             // Clear tokens and current user session
+
             await userRepo.clearTokens(user.id);
+
             await currentUser.clearCurrentUser();
+
         }
+
     },
+
     status: {
+
         name: 'status',
+
         description: 'Check authentication status',
+
         handler: async () => {
+
             // Comprehensive status display with token expiry analysis
+
             // Shows user info, token validity, and expiry timing
+
         }
+
     },
+
     refresh: {
+
         name: 'refresh',
+
         description: 'Manually refresh authentication tokens',
+
         handler: async () => {
+
             // Manual token refresh using TokenRefreshService
+
             const success = await tokenRefreshService.refreshAccessToken(user.id);
+
         }
+
     }
+
 };
+
+
 
 // src/cli/index.ts - Main CLI dispatcher
+
 const commands: Record<string, CommandGroup> = {
+
     auth: {
+
         name: 'auth',
+
         description: 'OAuth authentication management',
+
         subcommands: authCommands
+
     }
+
 };
+
 ```
+
+
 
 **CLI Usage**:
+
 ```bash
+
 # Direct CLI usage
+
 bun src/cli/index.ts auth login      # OAuth authentication flow
+
 bun src/cli/index.ts auth logout     # Clear all tokens
+
 bun src/cli/index.ts auth status     # Detailed authentication status
+
 bun src/cli/index.ts auth refresh    # Manual token refresh
 
+
+
 # Via npm scripts
+
 bun run auth:login                   # Convenient shortcuts
+
 bun run auth:logout
+
 bun run auth:status
+
 bun run auth:refresh
 
+
+
 # Help system
+
 bun src/cli/index.ts --help         # Main help
+
 bun src/cli/index.ts auth --help    # Auth command help
+
 ```
+
+
 
 **Enhanced Features**:
+
 - **Rich Status Display**: Shows user info, token expiry countdown, and validity status
+
 - **Comprehensive Error Handling**: Clear error messages with actionable guidance
+
 - **Database Integration**: Proper connection management with cleanup
+
 - **Type Safety**: Full TypeScript support with proper interfaces
+
 - **Help System**: Built-in help for all commands and subcommands
+
 - **Graceful Shutdown**: Proper database connection cleanup on exit
 
+
+
 **Files Created/Modified**:
+
 - ✅ `src/cli/commands/auth.ts` (new - modular auth commands)
+
 - ✅ `src/cli/index.ts` (new - centralized CLI dispatcher)
+
 - ✅ `src/database/repositories/UsersRepository.ts` (modified - added `clearTokens` method)
+
 - ✅ `package.json` (modified - added convenience scripts)
+
 - ✅ `src/cli/auth.ts` (removed - migrated to integrated system)
 
+
+
 **Acceptance Criteria**:
+
 - ✅ Integrated CLI system with auth subcommands
+
 - ✅ Consistent error handling and user feedback
+
 - ✅ Removed standalone auth script
+
 - ✅ Rich help documentation for all commands
+
 - ✅ Database connection management
+
 - ✅ Type-safe command structure
-
----
-
-### Phase 4: Service Integration & Middleware (Medium Priority)
-
-**Goal**: Seamless token management across all services
-
-**Implementation**:
-```typescript
-// OAuth Middleware for automatic token management
-// src/middleware/OAuthMiddleware.ts
-export class OAuthMiddleware {
-  constructor(
-    private oauthService: OAuthService,
-    private logger: Logger
-  ) {}
-
-  async ensureAuthenticated(): Promise<void> {
-    const isValid = await this.oauthService.refreshTokensIfNeeded();
-    if (!isValid) {
-      throw new AuthenticationError('Please authenticate with: bun auth login');
-    }
-  }
-
-  // Decorator for automatic token validation
-  static requireAuth() {
-    return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-      const originalMethod = descriptor.value;
-
-      descriptor.value = async function (...args: any[]) {
-        const middleware = appContainer.resolve(OAuthMiddleware);
-        await middleware.ensureAuthenticated();
-        return originalMethod.apply(this, args);
-      };
-    };
-  }
-}
-```
-
-**Service Integration Examples**:
-```typescript
-// Apply to all services that need OAuth
-export class GmailService {
-  @OAuthMiddleware.requireAuth()
-  async getMessages(): Promise<any> {
-    // Token validation happens automatically
-    // ... existing implementation
-  }
-
-  @OAuthMiddleware.requireAuth()
-  async getLabels(): Promise<any> {
-    // ... existing implementation
-  }
-}
-
-export class MessageProcessingService {
-  @OAuthMiddleware.requireAuth()
-  async processMessage(): Promise<any> {
-    // ... existing implementation
-  }
-}
-```
-
-**Error Handling**:
-```typescript
-// Custom error types
-export class AuthenticationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthenticationError';
-  }
-}
-
-export class TokenExpiredError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'TokenExpiredError';
-  }
-}
-```
-
-**Files to Create/Modify**:
-- `src/middleware/OAuthMiddleware.ts` (new)
-- `src/errors/AuthenticationError.ts` (new)
-- `src/services/GmailService.ts` (modify - add middleware)
-- `src/services/MessageProcessingService.ts` (modify - add middleware)
-- All OAuth-dependent services (modify - add decorators)
-
-**Acceptance Criteria**:
-- [ ] Automatic token validation middleware
-- [ ] Decorator-based authentication requirements
-- [ ] Consistent error handling across services
-- [ ] Graceful degradation when authentication fails
-
-## Implementation Timeline
-
-### Week 1: Security Foundation
-- **Days 1-2**: Phase 1 - Token Encryption
-- **Days 3-5**: Phase 2 - Automatic Token Refresh
-
-### Week 2: User Experience
-- **Days 1-3**: Phase 3 - CLI Integration
-- **Days 4-5**: Phase 4 - Service Integration
-
-### Week 3: Testing & Polish
-- **Days 1-2**: Integration testing
-- **Days 3-4**: Documentation and error handling
-- **Day 5**: Production deployment preparation
-
-## Environment Configuration
-
-```env
-# OAuth Configuration
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
-OAUTH_CALLBACK_PORT=3000
-
-# Token Security
-TOKEN_ENCRYPTION_KEY=your-32-char-secret-key-here
-TOKEN_SALT=your-salt-here
-
-# Token Management
-TOKEN_REFRESH_BUFFER_MINUTES=5
-TOKEN_REFRESH_CHECK_INTERVAL_MS=60000
-```
-
-## Testing Strategy
-
-1. **Unit Tests**:
-   - Token encryption/decryption
-   - Token refresh logic
-   - CLI command functions
-
-2. **Integration Tests**:
-   - Full OAuth flow
-   - Token refresh with real Google API
-   - Service authentication middleware
-
-3. **Security Tests**:
-   - Token storage security
-   - CSRF protection
-   - Token expiry handling
-
-## Rollout Plan
-
-1. **Development**: Implement phases in order
-2. **Staging**: Test with real OAuth tokens and Google API
-3. **Production**:
-   - Migrate existing users with token encryption
-   - Enable automatic refresh
-   - Monitor token refresh success rates
-
-## Success Metrics
-
-- [ ] 100% of tokens encrypted at rest
-- [ ] Automatic token refresh success rate > 99%
-- [ ] Zero manual re-authentication required for 30+ days
-- [ ] CLI authentication commands working seamlessly
-- [ ] All services protected with authentication middleware
