@@ -68,7 +68,7 @@
         "@types/open": "^6.2.1",
         "bullmq": "^5.65.1",
         "eta": "^4.4.1",
-        "googleapis": "^166.0.0",
+        "googleapis": "^170.0.0",
         "inflection": "^3.0.2",
         "open": "^11.0.0",
         "pg": "^8.16.3",
